@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Noise.Agent/Noise.Agent.csproj" />
+    <Project Path="src/Noise.Core/Noise.Core.csproj" />
+    <Project Path="src/Noise.Server/Noise.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Noise.Tests/Noise.Tests.csproj" />
+  </Folder>
+</Solution>
