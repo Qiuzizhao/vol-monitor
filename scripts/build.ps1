@@ -32,7 +32,7 @@ Copy-Item README.md $teacher
 Copy-Item README.md $student
 Copy-Item scripts/prepare-image.ps1,scripts/agent-deployment.example.json,IMAGE-DEPLOYMENT.md $student
 Copy-Item IMAGE-DEPLOYMENT.md $teacher
-Compress-Archive -Path "$student/*" -DestinationPath "artifacts/RoomScope-student-v0.3.1-$Runtime.zip" -Force
-Copy-Item "artifacts/RoomScope-student-v0.3.1-$Runtime.zip" (Join-Path $teacher 'student-template.zip')
-Compress-Archive -Path "$teacher/*" -DestinationPath "artifacts/RoomScope-teacher-v0.3.1-$Runtime.zip" -Force
+Compress-Archive -Path "$student/*" -DestinationPath "artifacts/RoomScope-student-v0.3.2-$Runtime.zip" -Force
+Copy-Item "artifacts/RoomScope-student-v0.3.2-$Runtime.zip" (Join-Path $teacher 'student-template.zip')
+Compress-Archive -Path "$teacher/*" -DestinationPath "artifacts/RoomScope-teacher-v0.3.2-$Runtime.zip" -Force
 Write-Host '运行包已生成，保存在 artifacts 目录。'

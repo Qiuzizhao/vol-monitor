@@ -9,12 +9,13 @@ $settings = Get-Content $configPath -Raw | ConvertFrom-Json
 $secret = (Get-Content (Join-Path $dataDirectory 'https-password.dpapi') -Raw).Trim() | ConvertTo-SecureString
 $pointer = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
 try {
-    $env:ASPNETCORE_URLS = "https://0.0.0.0:$($settings.Port)"
+    $env:ASPNETCORE_URLS = "https://0.0.0.0:$($settings.Port);http://127.0.0.1:5080"
+    $env:ClassroomServerUrl = "https://$($settings.ServerIp):$($settings.Port)"
     $env:ASPNETCORE_Kestrel__Certificates__Default__Path = Join-Path $dataDirectory 'teacher.pfx'
     $env:ASPNETCORE_Kestrel__Certificates__Default__Password = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
     $env:DataDirectory = $dataDirectory
-    Write-Host "声域教师看板地址：https://$($settings.ServerIp):$($settings.Port)"
-    Write-Host '首次登录密码保存在 data\initial-password.txt。'
+    Write-Host '声域教师看板：http://127.0.0.1:5080（本机直接进入，无需密码）。'
+    Write-Host "学生机连接地址：$env:ClassroomServerUrl"
     & (Join-Path $PSScriptRoot 'Noise.Server.exe')
 } finally {
     [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)

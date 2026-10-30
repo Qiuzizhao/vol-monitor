@@ -54,7 +54,7 @@ public sealed class MainForm : Form
         root.Controls.Add(status, 0, 8); root.SetColumnSpan(status, 2);
         root.Controls.Add(detail, 0, 9); root.SetColumnSpan(detail, 2);
         var note = new Label { Text = "音频只在本机内存中计算，处理后丢弃。\n每秒上传音量统计，不上传录音，不识别讲话内容。" +
-            (managed ? "\n受管模式：关闭窗口仅最小化；无托盘图标。程序退出会自动重启。\n维护退出需教师密码。再次双击启动入口可打开窗口。" : "关闭此窗口将停止采集。"), AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(0, 16, 0, 0) };
+            (managed ? "\n受管模式：关闭窗口仅最小化；无托盘图标。程序退出会自动重启。\n维护退出需维护密码。再次双击启动入口可打开窗口。" : "关闭此窗口将停止采集。"), AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(0, 16, 0, 0) };
         root.Controls.Add(note, 0, 10); root.SetColumnSpan(note, 2);
         var menu = new ContextMenuStrip(); menu.Items.Add("显示窗口", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); });
         if (!managed) menu.Items.Add("退出", null, (_, _) => Close()); tray.ContextMenuStrip = menu;
@@ -223,7 +223,7 @@ public sealed class MainForm : Form
     private async Task MaintenanceExit()
     {
         using var dialog = new Form { Text = "教师维护退出", ClientSize = new Size(390, 155), StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false };
-        var label = new Label { Text = "请输入教师看板密码（需要连接教师机）", AutoSize = true, Location = new Point(16, 15) };
+        var label = new Label { Text = "请输入教师保管的维护密码（需连接教师机）", AutoSize = true, Location = new Point(16, 15) };
         var password = new TextBox { UseSystemPasswordChar = true, MaxLength = 256, Location = new Point(16, 48), Width = 355 };
         var confirm = new Button { Text = "验证并退出", DialogResult = DialogResult.OK, Location = new Point(245, 98), Width = 125 };
         dialog.Controls.AddRange([label, password, confirm]); dialog.AcceptButton = confirm;
@@ -231,7 +231,7 @@ public sealed class MainForm : Form
         try
         {
             Enabled = false;
-            if (!await AgentSupervisor.RequestMaintenance(password.Text)) { detail.Text = "教师密码不正确，无法退出。"; return; }
+            if (!await AgentSupervisor.RequestMaintenance(password.Text)) { detail.Text = "维护密码不正确，无法退出。"; return; }
             maintenanceExit = true;
             Close();
         }

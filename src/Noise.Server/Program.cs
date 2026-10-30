@@ -84,6 +84,12 @@ app.Use(async (ctx, next) =>
 });
 app.UseRateLimiter();
 app.UseAuthentication();
+app.Use(async (ctx, next) =>
+{
+    if (LocalTeacherAccess.IsLocal(ctx))
+        ctx.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "teacher")], "LocalTeacher"));
+    await next();
+});
 app.UseAuthorization();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 app.UseDefaultFiles();
@@ -119,6 +125,7 @@ app.MapPost("/api/device/calibration", (CalibrationReport request, HttpContext c
 
 var teacher = app.MapGroup("/api/teacher").RequireAuthorization();
 teacher.MapGet("/dashboard", (RoomStore store) => store.Snapshot());
+teacher.MapGet("/connection", (IConfiguration configuration) => new { server = configuration["ClassroomServerUrl"] });
 teacher.MapPost("/logout", async (HttpContext ctx) => { await ctx.SignOutAsync(); return Results.Ok(); });
 teacher.MapGet("/pairing", (RoomStore store) => store.Pairing());
 teacher.MapGet("/enrollment", (RoomStore store) => store.EnrollmentRequests());
@@ -173,7 +180,7 @@ app.MapFallbackToFile("index.html");
 app.Lifetime.ApplicationStarted.Register(() =>
 {
     Console.WriteLine("教师服务已启动，请保留此窗口。登录后可开始实验，学生机将自动采集音量。");
-    Console.WriteLine("首次登录密码文件：" + Path.Combine(DataDirectory(app.Configuration, app.Environment), "initial-password.txt"));
+    Console.WriteLine("本机打开 http://127.0.0.1:5080 即可进入看板，无需密码。");
 });
 app.Lifetime.ApplicationStopped.Register(() => Console.WriteLine("教师服务已停止。"));
 app.Run();

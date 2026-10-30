@@ -33,7 +33,11 @@ try {
         if ($TypeName -like '*X509Certificate2*') { [pscustomobject]@{ Thumbprint = 'TEST'; NotAfter = (Get-Date).AddMonths(6) } }
         else { Microsoft.PowerShell.Utility\New-Object -TypeName $TypeName -ArgumentList $ArgumentList }
     }
-    function Start-Job { param($ArgumentList, $ScriptBlock) return $null }
+    function Start-Job {
+        param($ArgumentList, $ScriptBlock)
+        if ($ArgumentList[0] -ne 'http://127.0.0.1:5080') { throw 'Teacher browser must open the local passwordless dashboard.' }
+        return $null
+    }
     function New-Item {
         param($Path, $ItemType, [switch]$Force)
         if ($Path -like 'HKCU:*') { return }

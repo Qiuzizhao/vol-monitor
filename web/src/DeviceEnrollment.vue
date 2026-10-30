@@ -7,7 +7,7 @@ interface Overview {window:{open:boolean;closesAt:string|null};requests:Pending[
 const props=defineProps<{api:(path:string,method?:string,body?:unknown)=>Promise<any>;seats:Seat[];devices:Device[]}>();
 const emit=defineEmits<{notice:[message:string]}>();
 const overview=ref<Overview>({window:{open:false,closesAt:null},requests:[]}),busy=ref(false),selected=ref<string[]>([]),mapping=ref<Record<string,string>>({});
-const exporting=ref(false),profileServer=ref(location.origin),identityDirectory=ref(''),error=ref('');
+const exporting=ref(false),profileServer=ref(location.protocol==='https:'?location.origin:''),identityDirectory=ref(''),error=ref('');
 let poll:ReturnType<typeof setInterval>|undefined;
 const selectedRequests=computed(()=>overview.value.requests.filter(r=>selected.value.includes(r.id)));
 const conflict=computed(()=>{
@@ -42,7 +42,7 @@ function downloadProfile(){
   emit('notice','通用配置已导出。请放到学生端程序旁，封装母盘前运行 prepare-image.ps1 清除身份。');
  }catch(e){error.value=e instanceof Error?e.message:'配置生成失败';}
 }
-onMounted(async()=>{try{await refresh();}catch(e){error.value=e instanceof Error?e.message:'申请列表加载失败';}poll=setInterval(()=>{if(!busy.value)refresh().catch(e=>error.value=e.message);},4000);});
+onMounted(async()=>{try{const connection=await props.api('/connection');if(connection.server)profileServer.value=connection.server;await refresh();}catch(e){error.value=e instanceof Error?e.message:'申请列表加载失败';}poll=setInterval(()=>{if(!busy.value)refresh().catch(e=>error.value=e.message);},4000);});
 onUnmounted(()=>clearInterval(poll));
 </script>
 

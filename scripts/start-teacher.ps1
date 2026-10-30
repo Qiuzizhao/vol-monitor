@@ -14,7 +14,7 @@ try {
     if (-not $created) {
         if (-not $AtLogin -and (Test-Path $settingsPath)) {
             $current = Get-Content $settingsPath -Raw | ConvertFrom-Json
-            Start-Process "https://$($current.ServerIp):$($current.Port)"
+            Start-Process 'http://127.0.0.1:5080'
         }
         return
     }
@@ -88,14 +88,12 @@ try {
     Write-Host '请将此压缩包复制到学生机，解压后双击 start-student.cmd。'
     Write-Host '在教师看板进入“设备管理 → 镜像批量接入”，开启接入，核对座位后批量批准。'
     Write-Host '批准并绑定后，教师开始真实实验即可自动采集音量，再点击“安静校准”。'
-    # Open the browser only after HTTPS responds. Password stays on this teacher computer.
-    if (-not $AtLogin) { $browserJob = Start-Job -ArgumentList $url,$PSScriptRoot -ScriptBlock {
+    # The local dashboard needs no password; student connections still use HTTPS.
+    if (-not $AtLogin) { $browserJob = Start-Job -ArgumentList 'http://127.0.0.1:5080',$PSScriptRoot -ScriptBlock {
         param($url, $directory)
         for ($i = 0; $i -lt 60; $i++) {
             try {
                 Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2 | Out-Null
-                $passwordPath = Join-Path $directory 'data/initial-password.txt'
-                if (Test-Path $passwordPath) { Start-Process notepad.exe -ArgumentList ('"' + $passwordPath + '"') }
                 Start-Process $url
                 break
             } catch { Start-Sleep -Seconds 1 }

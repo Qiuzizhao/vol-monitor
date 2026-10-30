@@ -3,19 +3,34 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Noise.Core;
 using Noise.Server;
 using Xunit;
 
 namespace Noise.Tests;
 
-public sealed class AppFactory : WebApplicationFactory<Program>
+public sealed class AppFactory(IPAddress? peer = null) : WebApplicationFactory<Program>
 {
     public string DataPath { get; } = Path.Combine(Path.GetTempPath(), "roomscope-api-" + Guid.NewGuid());
-    protected override void ConfigureWebHost(IWebHostBuilder builder) => builder
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder
         .UseSetting("DataDirectory", DataPath).UseSetting("TeacherPassword", "test-password-123")
+        .UseSetting("ClassroomServerUrl", "https://192.168.1.10:5081")
         .UseSetting("Logging:LogLevel:Default", "Error");
+        if (peer is not null) builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new PeerFilter(peer)));
+    }
+    private sealed class PeerFilter(IPAddress address) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use((context, nextMiddleware) => { context.Connection.RemoteIpAddress = address; return nextMiddleware(); });
+            next(app);
+        };
+    }
     public HttpClient Client() => CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
     public async Task<HttpClient> Teacher()
     {
@@ -33,6 +48,50 @@ public sealed class AppFactory : WebApplicationFactory<Program>
 
 public sealed class ApiTests
 {
+    [Fact]
+    public async Task LocalTeacherNeedsNoPasswordButStillRequiresCsrfHeader()
+    {
+        using var factory = new AppFactory(IPAddress.Loopback); using var client = factory.Client();
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/teacher/dashboard")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync("/api/teacher/enrollment/open", null)).StatusCode);
+        client.DefaultRequestHeaders.Add("X-RoomScope", "1");
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/teacher/enrollment/open", null)).StatusCode);
+        var connection = await client.GetFromJsonAsync<JsonElement>("/api/teacher/connection");
+        Assert.Equal("https://192.168.1.10:5081", connection.GetProperty("server").GetString());
+    }
+
+    [Fact]
+    public async Task LocalPeerWithForeignHostDoesNotGainTeacherAccess()
+    {
+        using var factory = new AppFactory(IPAddress.Loopback); using var client = factory.Client();
+        client.DefaultRequestHeaders.Host = "untrusted.invalid";
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/teacher/dashboard")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ExternalPageCannotUseLocalPasswordlessAccess()
+    {
+        using var factory = new AppFactory(IPAddress.Loopback); using var client = factory.Client();
+        client.DefaultRequestHeaders.Add("Origin", "https://untrusted.invalid");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/teacher/dashboard")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ForwardedLocalAddressDoesNotGrantRemoteTeacherAccess()
+    {
+        using var factory = new AppFactory(IPAddress.Parse("192.168.1.20")); using var client = factory.Client();
+        client.DefaultRequestHeaders.Add("X-Forwarded-For", "127.0.0.1");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/teacher/dashboard")).StatusCode);
+    }
+
+    [Fact]
+    public async Task PasswordlessDashboardDoesNotBypassMaintenancePasswordVerification()
+    {
+        using var factory = new AppFactory(IPAddress.Loopback); using var client = factory.Client();
+        client.DefaultRequestHeaders.Add("X-RoomScope", "1");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/login", new { password = "wrong" })).StatusCode);
+    }
+
     [Fact]
     public async Task ImageEnrollmentIsPendingUntilTeacherApprovalAndClaimIsNotPublic()
     {
