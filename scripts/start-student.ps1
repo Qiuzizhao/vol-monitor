@@ -1,4 +1,5 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿param([switch]$FromLauncher)
+$ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'console.ps1')
 trap { Write-StartupError $_; exit 1 }
 try {

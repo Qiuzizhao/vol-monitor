@@ -1,7 +1,5 @@
 namespace Noise.Core;
 
-public record EnrollRequest(string PairingCode, string Name, string? HardwareFingerprint = null);
-public record EnrollResult(string DeviceId, string Token);
 public record DeviceReport(
     string BootId, long Seq, string? SessionId, string CaptureStatus,
     string? MicrophoneId = null, double? LevelDbfs = null, double? PeakDbfs = null,

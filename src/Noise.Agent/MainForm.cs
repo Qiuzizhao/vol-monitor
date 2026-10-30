@@ -6,15 +6,15 @@ namespace Noise.Agent;
 public sealed class MainForm : Form
 {
     private readonly TextBox server = new() { Text = "https://192.168.1.10:5081", Dock = DockStyle.Fill };
-    private readonly TextBox name = new() { Text = Environment.MachineName, Dock = DockStyle.Fill };
-    private readonly TextBox pairing = new() { Dock = DockStyle.Fill, MaxLength = 8 };
+    private readonly Label name = new() { Text = Environment.MachineName, Dock = DockStyle.Fill };
     private readonly ComboBox microphone = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly Label status = new() { Text = "尚未连接教师机", AutoSize = true, ForeColor = Color.Teal, Font = new Font("Microsoft YaHei UI", 12, FontStyle.Bold) };
-    private readonly Label detail = new() { Text = "配对后，需要在教师端将此设备绑定到座位。", AutoSize = true, MaximumSize = new Size(620, 0) };
-    private readonly Button connect = new() { Text = "配对并连接", AutoSize = true };
+    private readonly Label detail = new() { Text = "正在连接教师机……", AutoSize = true, MaximumSize = new Size(380, 0) };
+    private readonly Button connect = new() { Text = "申请接入", AutoSize = true };
     private readonly Button reset = new() { Text = "断开并重新配置", AutoSize = true, Visible = false };
     private readonly Button retryEnrollment = new() { Text = "重新申请", AutoSize = true, Visible = false };
-    private readonly NotifyIcon tray = new() { Icon = SystemIcons.Information, Text = "声域 RoomScope · 学生端", Visible = true };
+    private readonly NotifyIcon tray = new() { Icon = SystemIcons.Information, Text = "机房音量 · 学生端", Visible = true };
+    private readonly TableLayoutPanel settingsPanel = new() { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 2, Visible = false };
     private AgentWorker? worker;
     private AgentConfig? config;
     private DeploymentProfile? profile;
@@ -31,31 +31,33 @@ public sealed class MainForm : Form
     {
         this.managed = managed;
         tray.Visible = !managed;
-        Text = "声域 RoomScope · 学生端";
-        ClientSize = new Size(720, 510); MinimumSize = new Size(640, 540);
+        Text = "机房音量 · 学生端";
+        ClientSize = new Size(440, 240); MinimumSize = new Size(440, 280);
         Font = new Font("Microsoft YaHei UI", 10); BackColor = Color.White;
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28), ColumnCount = 2, RowCount = 11, AutoScroll = true };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28), ColumnCount = 2, RowCount = 5, AutoScroll = true };
         root.ColumnStyles.Add(new(SizeType.Absolute, 105)); root.ColumnStyles.Add(new(SizeType.Percent, 100));
         Controls.Add(root);
-        var title = new Label { Text = "声域 / 本地音量采集", AutoSize = true, Font = new Font(Font.FontFamily, 19, FontStyle.Bold), Margin = new Padding(0, 0, 0, 20) };
-        root.Controls.Add(title, 0, 0); root.SetColumnSpan(title, 2);
-        AddRow(root, "教师机地址", server, 1); AddRow(root, "设备名称", name, 2); AddRow(root, "配对码", pairing, 3); AddRow(root, "麦克风", microphone, 4);
-        var refresh = new Button { Text = "刷新麦克风", AutoSize = true }; refresh.Click += (_, _) => RefreshDevices();
-        root.Controls.Add(refresh, 1, 5);
-        root.Controls.Add(new Label { Text = "教师开始实验后自动采集音量，暂停或结束后自动停止。", AutoSize = true }, 1, 6);
-        var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
-        buttons.Controls.Add(connect); buttons.Controls.Add(reset); buttons.Controls.Add(retryEnrollment); root.Controls.Add(buttons, 1, 7);
+        root.Controls.Add(status, 0, 0); root.SetColumnSpan(status, 2);
+        root.Controls.Add(detail, 0, 1); root.SetColumnSpan(detail, 2);
+        root.Controls.Add(name, 0, 2); root.SetColumnSpan(name, 2);
+        var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 16, 0, 0) };
+        var settings = new Button { Text = "连接设置", AutoSize = true };
+        settings.Click += (_, _) => { settingsPanel.Visible = !settingsPanel.Visible; ClientSize = new Size(440, settingsPanel.Visible ? 410 : 240); };
+        buttons.Controls.Add(settings); buttons.Controls.Add(retryEnrollment);
         if (managed)
         {
-            var maintenance = new Button { Text = "教师维护退出", AutoSize = true };
+            var maintenance = new Button { Text = "管理员退出", AutoSize = true };
             maintenance.Click += async (_, _) => await MaintenanceExit();
             buttons.Controls.Add(maintenance);
         }
-        root.Controls.Add(status, 0, 8); root.SetColumnSpan(status, 2);
-        root.Controls.Add(detail, 0, 9); root.SetColumnSpan(detail, 2);
-        var note = new Label { Text = "音频只在本机内存中计算，处理后丢弃。\n每秒上传音量统计，不上传录音，不识别讲话内容。" +
-            (managed ? "\n受管模式：关闭窗口仅最小化；无托盘图标。程序退出会自动重启。\n维护退出需维护密码。再次双击启动入口可打开窗口。" : "关闭此窗口将停止采集。"), AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(0, 16, 0, 0) };
-        root.Controls.Add(note, 0, 10); root.SetColumnSpan(note, 2);
+        root.Controls.Add(buttons, 0, 3); root.SetColumnSpan(buttons, 2);
+        settingsPanel.ColumnStyles.Add(new(SizeType.Absolute, 90)); settingsPanel.ColumnStyles.Add(new(SizeType.Percent, 100));
+        AddRow(settingsPanel, "教师地址", server, 0); AddRow(settingsPanel, "麦克风", microphone, 1);
+        var refresh = new Button { Text = "刷新麦克风", AutoSize = true }; refresh.Click += (_, _) => RefreshDevices();
+        settingsPanel.Controls.Add(refresh, 1, 2);
+        var connections = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
+        connections.Controls.Add(connect); connections.Controls.Add(reset); settingsPanel.Controls.Add(connections, 1, 3);
+        root.Controls.Add(settingsPanel, 0, 4); root.SetColumnSpan(settingsPanel, 2);
         var menu = new ContextMenuStrip(); menu.Items.Add("显示窗口", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); });
         if (!managed) menu.Items.Add("退出", null, (_, _) => Close()); tray.ContextMenuStrip = menu;
         tray.DoubleClick += (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); };
@@ -105,9 +107,9 @@ public sealed class MainForm : Form
                 BeginWorker(config);
             }
             else if (profile?.AutoEnroll == true) StartEnrollment();
-            else status.Text = "尚未连接教师机";
+            else { status.Text = "等待连接"; settingsPanel.Visible = true; ClientSize = new Size(440, 410); }
         }
-        catch (Exception e) { status.Text = "设备身份或配置无法加载"; detail.Text = e.Message; SetConnected(false); }
+        catch (Exception) { status.Text = "连接设置异常"; detail.Text = "请联系教师检查。"; SetConnected(false); }
         finally { if (!closing) connect.Enabled = true; }
     }
 
@@ -171,13 +173,8 @@ public sealed class MainForm : Form
             var uri = AgentConfig.ValidateServer(server.Text);
             if (fingerprint.Length == 0) throw new InvalidOperationException("无法确认本机硬件标识，请检查系统后重启客户端。");
             if (microphone.SelectedItem is not MicrophoneItem mic) throw new ArgumentException("请先选择麦克风。");
-            using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(8) };
-            using var response = await http.PostAsJsonAsync("api/devices/enroll", new EnrollRequest(pairing.Text.Trim().ToUpperInvariant(), name.Text.Trim(), fingerprint));
-            if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"配对失败（{(int)response.StatusCode}），请检查地址、证书和配对码。");
-            var result = await response.Content.ReadFromJsonAsync<EnrollResult>() ?? throw new InvalidOperationException("配对响应无效。");
-            config = AgentConfig.Create(uri.ToString(), result.DeviceId, result.Token, name.Text.Trim(), mic.Id, fingerprint);
-            PendingIdentity.Clear();
-            config.Save(); BeginWorker(config);
+            profile = new DeploymentProfile(uri.ToString());
+            StartEnrollment();
         }
         catch (Exception e) { status.Text = "连接失败"; detail.Text = e.Message; }
         finally { connect.Enabled = true; }
@@ -206,7 +203,7 @@ public sealed class MainForm : Form
                         worker = null; config = null;
                         AgentConfig.Clear(); PendingIdentity.Clear(); SetConnected(false);
                         if (profile?.AutoEnroll == true) { await StopEnrollment(); StartEnrollment(); }
-                        else status.Text = "授权已撤销，请重新配对";
+                        else status.Text = "授权已撤销，请重新申请接入";
                     }
                     catch (Exception e) { detail.Text = e.Message; }
                 });
@@ -217,13 +214,13 @@ public sealed class MainForm : Form
     }
     private void SetConnected(bool value)
     {
-        server.Enabled = name.Enabled = pairing.Enabled = microphone.Enabled = connect.Visible = !value;
+        server.Enabled = microphone.Enabled = connect.Visible = !value;
         reset.Visible = value && !managed;
     }
     private async Task MaintenanceExit()
     {
-        using var dialog = new Form { Text = "教师维护退出", ClientSize = new Size(390, 155), StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false };
-        var label = new Label { Text = "请输入教师保管的维护密码（需连接教师机）", AutoSize = true, Location = new Point(16, 15) };
+        using var dialog = new Form { Text = "管理员退出", ClientSize = new Size(390, 155), StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false };
+        var label = new Label { Text = "维护密码", AutoSize = true, Location = new Point(16, 15) };
         var password = new TextBox { UseSystemPasswordChar = true, MaxLength = 256, Location = new Point(16, 48), Width = 355 };
         var confirm = new Button { Text = "验证并退出", DialogResult = DialogResult.OK, Location = new Point(245, 98), Width = 125 };
         dialog.Controls.AddRange([label, password, confirm]); dialog.AcceptButton = confirm;

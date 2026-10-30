@@ -104,7 +104,6 @@ app.MapPost("/api/login", async (LoginRequest request, TeacherAccess access, Htt
     return Results.Ok(new { ok = true });
 }).RequireRateLimiting("auth");
 
-app.MapPost("/api/devices/enroll", (EnrollRequest request, RoomStore store) => store.Enroll(request)).RequireRateLimiting("auth");
 app.MapGet("/api/enrollment", (RoomStore store) => store.EnrollmentStatus()).RequireRateLimiting("enrollment");
 app.MapPost("/api/device-requests", (EnrollmentRequest request, HttpContext ctx, RoomStore store) =>
     store.RequestEnrollment(request, EnrollmentClaim(ctx))).RequireRateLimiting("enrollment");
@@ -127,13 +126,11 @@ var teacher = app.MapGroup("/api/teacher").RequireAuthorization();
 teacher.MapGet("/dashboard", (RoomStore store) => store.Snapshot());
 teacher.MapGet("/connection", (IConfiguration configuration) => new { server = configuration["ClassroomServerUrl"] });
 teacher.MapPost("/logout", async (HttpContext ctx) => { await ctx.SignOutAsync(); return Results.Ok(); });
-teacher.MapGet("/pairing", (RoomStore store) => store.Pairing());
 teacher.MapGet("/enrollment", (RoomStore store) => store.EnrollmentRequests());
 teacher.MapPost("/enrollment/open", (RoomStore store) => store.SetEnrollmentWindow(true));
 teacher.MapPost("/enrollment/close", (RoomStore store) => store.SetEnrollmentWindow(false));
 teacher.MapPost("/enrollment/approve", (EnrollmentBatch request, RoomStore store) => { store.ApproveEnrollments(request); return Results.Ok(); });
 teacher.MapPost("/enrollment/{id}/reject", (string id, RoomStore store) => { store.RejectEnrollment(id); return Results.Ok(); });
-teacher.MapPost("/pairing/rotate", (RoomStore store) => store.Pairing(true));
 teacher.MapPut("/devices/{id}/seat", (string id, SeatAssignment request, RoomStore store) => { store.Assign(id, request.SeatId); return Results.Ok(); });
 teacher.MapDelete("/devices/{id}", (string id, RoomStore store) => { store.DeleteDevice(id); return Results.Ok(); });
 teacher.MapPost("/sessions", (SessionRequest request, RoomStore store) => store.Start(request));
@@ -176,10 +173,11 @@ app.MapGet("/ws/dashboard", async (HttpContext ctx, RoomStore store) =>
     }
 }).RequireAuthorization();
 
+app.Map("/api/{**path}", () => Results.NotFound(new { error = "接口不存在。" }));
 app.MapFallbackToFile("index.html");
 app.Lifetime.ApplicationStarted.Register(() =>
 {
-    Console.WriteLine("教师服务已启动，请保留此窗口。登录后可开始实验，学生机将自动采集音量。");
+    Console.WriteLine("教师端已就绪。");
     Console.WriteLine("本机打开 http://127.0.0.1:5080 即可进入看板，无需密码。");
 });
 app.Lifetime.ApplicationStopped.Register(() => Console.WriteLine("教师服务已停止。"));

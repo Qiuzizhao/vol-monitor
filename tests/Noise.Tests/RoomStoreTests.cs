@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 using Noise.Core;
 using Noise.Server;
 using Xunit;
@@ -18,12 +19,18 @@ public sealed class RoomStoreTests : IDisposable
     private readonly ManualClock clock = new();
     private readonly RoomStore store;
     public RoomStoreTests() => store = new(directory, "Test room", timeProvider: clock);
-    private EnrollResult Enroll(string name = "PC-01")
+    private sealed record TestDevice(string DeviceId, string Token);
+    private TestDevice Enroll(string name = "PC-01")
     {
-        var pair = JsonSerializer.SerializeToElement(store.Pairing());
-        return store.Enroll(new(pair.GetProperty("code").GetString()!, name));
+        store.SetEnrollmentWindow(true);
+        var claim = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var fingerprint = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var request = store.RequestEnrollment(new(name, fingerprint), claim);
+        var seat = store.Seats.First(s => store.Snapshot().Devices.All(d => d.SeatId != s.Id));
+        store.ApproveEnrollments(new([new(request.RequestId!, seat.Id)]));
+        return new(store.PollEnrollment(request.RequestId!, claim).DeviceId!, claim);
     }
-    private (EnrollResult Device, ResearchSession Session) StartReal()
+    private (TestDevice Device, ResearchSession Session) StartReal()
     {
         var d = Enroll(); store.Assign(d.DeviceId, "seat-01");
         var session = store.Start(new("Real experiment"));
@@ -38,11 +45,11 @@ public sealed class RoomStoreTests : IDisposable
     }
 
     [Fact]
-    public void UnboundAndUncalibratedDevicesNeverProduceScores()
+    public void ApprovedDevicesStartAutomaticallyButNeedCalibrationForScores()
     {
         var d = Enroll(); var session = store.Start(new("Test"));
         var command = store.Report(d.DeviceId, new("boot", 1, session.Id, "idle", "mic-1"));
-        Assert.Equal("idle", command.State);
+        Assert.Equal("running", command.State);
         store.Assign(d.DeviceId, "seat-01");
         store.Report(d.DeviceId, new("boot", 2, session.Id, "ok", "mic-1", -30, -20, 0));
         var seat = store.Snapshot().Seats[0];
@@ -111,11 +118,11 @@ public sealed class RoomStoreTests : IDisposable
     }
 
     [Fact]
-    public void ExpiredPairingAndRevokedTokensAreRejected()
+    public void ExpiredEnrollmentWindowAndRevokedTokensAreRejected()
     {
-        var pair = JsonSerializer.SerializeToElement(store.Pairing());
+        store.SetEnrollmentWindow(true);
         clock.Advance(601);
-        Assert.Throws<UnauthorizedAccessException>(()=>store.Enroll(new(pair.GetProperty("code").GetString()!, "PC")));
+        Assert.Throws<ArgumentException>(()=>store.RequestEnrollment(new("PC", new string('A', 64)), new string('B', 64)));
         var device = Enroll();
         Assert.Equal(device.DeviceId, store.Authenticate(device.Token));
         store.DeleteDevice(device.DeviceId);

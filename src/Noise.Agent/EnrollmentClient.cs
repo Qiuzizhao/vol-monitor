@@ -26,7 +26,7 @@ public static class EnrollmentClient
                     var window = await http.GetFromJsonAsync<EnrollmentWindow>("api/enrollment", ct);
                     if (window?.Open != true)
                     {
-                        update("等待教师开启批量接入", "通用镜像配置已加载 · 尚未取得设备权限 · 麦克风未采集");
+                        update("等待教师允许接入", "待机");
                         await Task.Delay(15000, ct); continue;
                     }
                     using var response = await http.PostAsJsonAsync("api/device-requests", new EnrollmentRequest(Environment.MachineName, fingerprint), ct);
@@ -60,13 +60,13 @@ public static class EnrollmentClient
                     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Enrollment", identity.Claim());
                     await Task.Delay(15000, ct); continue;
                 }
-                update("接入申请已提交，等待教师确认", $"设备 {Environment.MachineName} · 硬件摘要 {fingerprint[..12]} · 麦克风未采集");
+                update("等待教师批准", $"本机：{Environment.MachineName}");
                 await Task.Delay(5000, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
             {
-                update("暂时无法连接教师机", e.Message + " · 检查地址及证书，15 秒后重试 · 麦克风未采集");
+                update("暂时无法连接教师机", "正在自动重连……");
                 await Task.Delay(15000, ct);
             }
         }

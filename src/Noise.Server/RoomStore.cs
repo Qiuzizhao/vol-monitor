@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -20,8 +19,6 @@ public sealed partial class RoomStore : IDisposable
     private ResearchSession? session;
     private string? calibrationId;
     private DateTimeOffset? calibrationUntil;
-    private string pairingCode = "";
-    private DateTimeOffset pairingExpires;
     private long lastBucket = -1;
     public string RoomName { get; }
     public Seat[] Seats { get; }
@@ -94,37 +91,6 @@ public sealed partial class RoomStore : IDisposable
     }
     private void Exec(string sql, params (string, object?)[] args) { using var cmd = Command(sql, args); cmd.ExecuteNonQuery(); }
     private object? Scalar(string sql, params (string, object?)[] args) { using var cmd = Command(sql, args); return cmd.ExecuteScalar(); }
-
-    public object Pairing(bool rotate = false)
-    {
-        lock (gate)
-        {
-            if (rotate || Now >= pairingExpires)
-            { pairingCode = Convert.ToHexString(RandomNumberGenerator.GetBytes(4)); pairingExpires = Now.AddMinutes(10); }
-            return new { code = pairingCode, expiresAt = pairingExpires };
-        }
-    }
-
-    public EnrollResult Enroll(EnrollRequest request)
-    {
-        lock (gate)
-        {
-            if (string.IsNullOrEmpty(pairingCode) || Now >= pairingExpires || request.PairingCode != pairingCode)
-                throw new UnauthorizedAccessException("配对码无效或已过期。");
-            if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 64) throw new ArgumentException("设备名称需要 1～64 个字符。");
-            if (request.HardwareFingerprint is not null && !Hex64(request.HardwareFingerprint)) throw new ArgumentException("硬件标识无效。");
-            var fingerprint = request.HardwareFingerprint?.ToUpperInvariant();
-            if (fingerprint is not null && Scalar("SELECT device_id FROM device_hardware WHERE fingerprint=$fp", ("$fp", fingerprint)) is not null)
-                throw new ArgumentException("此硬件已有登记，请在教师端使用批量接入确认替换，或先移除旧设备。");
-            var id = Guid.NewGuid().ToString("N");
-            var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-            var hash = TeacherAccess.TokenHash(token);
-            Exec("INSERT INTO devices(id,name,token_hash) VALUES($id,$name,$hash)", ("$id", id), ("$name", request.Name.Trim()), ("$hash", hash));
-            if (fingerprint is not null) Exec("INSERT INTO device_hardware VALUES($fp,$id)", ("$fp", fingerprint), ("$id", id));
-            devices[id] = new Device { Id = id, Name = request.Name.Trim() }; tokens[hash] = id;
-            return new(id, token);
-        }
-    }
 
     public string? Authenticate(string token)
     {

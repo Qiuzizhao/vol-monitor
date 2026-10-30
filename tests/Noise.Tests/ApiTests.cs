@@ -41,13 +41,33 @@ public sealed class AppFactory(IPAddress? peer = null) : WebApplicationFactory<P
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing && Directory.Exists(DataPath))
-        { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(DataPath, true); }
+        if (disposing)
+        {
+            var fullPath = Path.GetFullPath(DataPath);
+            var tempRoot = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!fullPath.StartsWith(tempRoot, StringComparison.OrdinalIgnoreCase) || !Path.GetFileName(fullPath).StartsWith("roomscope-api-", StringComparison.Ordinal))
+                throw new InvalidOperationException("Unexpected test data directory.");
+            for (var attempt = 0; Directory.Exists(fullPath); attempt++)
+            {
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+                try { Directory.Delete(fullPath, true); break; }
+                catch (IOException) when (attempt < 5) { Thread.Sleep(50); }
+            }
+        }
     }
 }
 
 public sealed class ApiTests
 {
+    [Fact]
+    public async Task PairingCodeEndpointsHaveBeenRemoved()
+    {
+        using var factory = new AppFactory(); using var teacher = await factory.Teacher();
+        Assert.Equal(HttpStatusCode.NotFound, (await teacher.GetAsync("/api/teacher/pairing")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await teacher.PostAsync("/api/teacher/pairing/rotate", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await teacher.PostAsJsonAsync("/api/devices/enroll", new { pairingCode = "old-code", name = "PC01" })).StatusCode);
+    }
+
     [Fact]
     public async Task LocalTeacherNeedsNoPasswordButStillRequiresCsrfHeader()
     {
@@ -137,9 +157,15 @@ public sealed class ApiTests
     public async Task FullEnrollmentCalibrationAndExportFlow()
     {
         using var factory = new AppFactory(); using var teacher = await factory.Teacher(); using var agent = factory.Client();
-        var pair = await teacher.GetFromJsonAsync<JsonElement>("/api/teacher/pairing");
-        var enrolled = await agent.PostAsJsonAsync("/api/devices/enroll", new EnrollRequest(pair.GetProperty("code").GetString()!, "Test PC"));
-        var identity = (await enrolled.Content.ReadFromJsonAsync<EnrollResult>())!;
+        await teacher.PostAsync("/api/teacher/enrollment/open", null);
+        var claim = new string('A', 64);
+        agent.DefaultRequestHeaders.Authorization = new("Enrollment", claim);
+        var submitted = await agent.PostAsJsonAsync("/api/device-requests", new EnrollmentRequest("Test PC", new string('B', 64)));
+        var pending = (await submitted.Content.ReadFromJsonAsync<EnrollmentState>())!;
+        var approved = await teacher.PostAsJsonAsync("/api/teacher/enrollment/approve", new EnrollmentBatch([new(pending.RequestId!, "seat-01")]));
+        Assert.Equal(HttpStatusCode.OK, approved.StatusCode);
+        var registered = (await agent.GetFromJsonAsync<EnrollmentState>("/api/device-requests/" + pending.RequestId))!;
+        var identity = new { DeviceId = registered.DeviceId!, Token = claim };
         agent.DefaultRequestHeaders.Authorization = new("Bearer", identity.Token);
         Assert.Equal(HttpStatusCode.OK,(await teacher.PutAsJsonAsync($"/api/teacher/devices/{identity.DeviceId}/seat", new SeatAssignment("seat-01"))).StatusCode);
         var start = await teacher.PostAsJsonAsync("/api/teacher/sessions", new SessionRequest("Integration test"));

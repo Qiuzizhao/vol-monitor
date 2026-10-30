@@ -35,7 +35,4 @@ Export-PfxCertificate -Cert $certificate -FilePath $certPath -Password $secret |
 ConvertFrom-SecureString $secret | Set-Content (Join-Path $dataDirectory 'https-password.dpapi')
 Export-Certificate -Cert $certificate -FilePath (Join-Path $teacherDirectory 'roomscope-teacher.cer') | Out-Null
 @{ ServerIp = $ServerIp; Port = $Port } | ConvertTo-Json | Set-Content (Join-Path $dataDirectory 'https.json')
-Write-Host "安全连接已配置，教师地址：https://${ServerIp}:${Port}"
-Write-Host '手动部署时，只向学生机分发公开证书 roomscope-teacher.cer，并导入当前用户的受信任根证书。'
-Write-Host '请勿分发 data 目录或 teacher.pfx 私钥；请使用当前 Windows 账户启动教师端。'
-Write-Host "教师机防火墙需要允许机房子网访问端口 $Port；推荐使用 start-teacher.cmd 自动配置。"
+Write-Host '连接已配置。'

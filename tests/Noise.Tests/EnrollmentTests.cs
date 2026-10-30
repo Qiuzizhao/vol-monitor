@@ -56,14 +56,14 @@ public sealed class EnrollmentTests : IDisposable
     }
 
     [Fact]
-    public void NewManualPairingAlsoRetainsHardwareSeatForLaterImageEnrollment()
+    public void ApprovedDeviceRetainsHardwareSeatForLaterEnrollment()
     {
-        var code = JsonSerializer.SerializeToElement(store.Pairing()).GetProperty("code").GetString()!;
-        var paired = store.Enroll(new(code, "PC01", Hardware())); store.Assign(paired.DeviceId, "seat-01");
+        store.SetEnrollmentWindow(true);
+        var (first, firstClaim) = Request(); var firstId = Approve(first, firstClaim);
         store.SetEnrollmentWindow(true); var (request, claim) = Request();
-        Assert.Equal(paired.DeviceId, Assert.Single(store.EnrollmentRequests().Requests).ExistingDeviceId);
+        Assert.Equal(firstId, Assert.Single(store.EnrollmentRequests().Requests).ExistingDeviceId);
         Approve(request, claim);
-        Assert.Null(store.Authenticate(paired.Token));
+        Assert.Null(store.Authenticate(firstClaim));
     }
 
     [Fact]

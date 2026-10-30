@@ -74,14 +74,14 @@ public sealed class AgentWorker : IAsyncDisposable
                     if (nextCalibration != currentCalibration)
                     { currentCalibration = nextCalibration; baselineSamples.Clear(); }
                     Updated?.Invoke(currentCalibration is not null && currentCalibration != completedCalibration
-                        ? $"正在校准背景音量 {baselineSamples.Count}/10 秒" : "正在采集音量 · 不保存录音",
-                        $"座位 {next.Seat} · {next.Zone} · 每秒上报一次");
+                        ? $"正在校准 {baselineSamples.Count}/10 秒" : "音量采集中",
+                        $"座位 {next.Seat} · {next.Zone}");
                 }
                 else
                 {
                     audio.Stop(); baselineSamples.Clear(); currentCalibration = null;
-                    Updated?.Invoke("待机 · 麦克风未采集",
-                        next.Seat is null ? "已连接教师机，等待绑定座位" : $"座位 {next.Seat} · 等待教师开始实验");
+                    Updated?.Invoke("待机",
+                        next.Seat is null ? "已连接教师机，等待绑定座位" : $"座位 {next.Seat} · 等待教师开始监测");
                 }
                 await delay(TimeSpan.FromSeconds(next.State == "running" ? 1 : 2), ct);
             }
@@ -92,7 +92,7 @@ public sealed class AgentWorker : IAsyncDisposable
                 // No capture continues when server control is unavailable.
                 audio.Stop(); baselineSamples.Clear(); currentCalibration = null;
                 var seconds = Math.Min(30, Math.Pow(2, Math.Min(++failures, 5)));
-                Updated?.Invoke("连接或采集异常 · 麦克风已停止", e.Message + $"（{seconds:0} 秒后重试）");
+                Updated?.Invoke("连接异常，已停止采集", $"{seconds:0} 秒后自动重连。");
                 try { await delay(TimeSpan.FromSeconds(seconds), ct); } catch (OperationCanceledException) { break; }
             }
         }

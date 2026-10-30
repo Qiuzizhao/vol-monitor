@@ -21,18 +21,21 @@ Invoke-Checked { npm run build --prefix web }
 # Publish into a fresh directory so an earlier classroom configuration or device
 # credential can never leak into the reusable student template.
 $buildDirectory = Join-Path $root ('artifacts/build-' + [guid]::NewGuid().ToString('N'))
-$teacher = Join-Path $buildDirectory 'teacher'
-$student = Join-Path $buildDirectory 'student'
+$teacherRoot = Join-Path $buildDirectory 'teacher'
+$studentRoot = Join-Path $buildDirectory 'student'
+$teacher = Join-Path $teacherRoot '程序'
+$student = Join-Path $studentRoot '程序'
 Invoke-Checked { dotnet publish src/Noise.Server -c Release -r $Runtime --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $teacher }
 Invoke-Checked { dotnet publish src/Noise.Agent -c Release -r $Runtime --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $student }
-Copy-Item scripts/start-local.cmd,scripts/start-lan.ps1,scripts/configure-https.ps1,scripts/start-teacher.cmd,scripts/start-teacher.ps1,scripts/open-firewall.ps1 $teacher
-Copy-Item scripts/console.ps1 $teacher
-Copy-Item scripts/start-student.cmd,scripts/start-student.ps1,scripts/console.ps1 $student
-Copy-Item README.md $teacher
-Copy-Item README.md $student
+Copy-Item scripts/start-lan.ps1,scripts/configure-https.ps1,scripts/start-teacher.ps1,scripts/open-firewall.ps1 $teacher
+Copy-Item scripts/console.ps1,scripts/launch-ui.ps1 $teacher
+Copy-Item scripts/start-student.ps1,scripts/console.ps1,scripts/launch-ui.ps1 $student
+Copy-Item scripts/start-teacher.cmd (Join-Path $teacherRoot '启动教师端.cmd')
+Copy-Item scripts/start-student.cmd (Join-Path $studentRoot '启动学生端.cmd')
+Set-Content -Encoding UTF8 -Path (Join-Path $teacherRoot '使用说明.txt') -Value "1. 双击「启动教师端.cmd」，完成系统授权后自动打开管理页面。`r`n2. 将生成的「学生端安装包.zip」发到学生机。`r`n3. 页面点「学生机」→「开启接入」，核对座位并批准。`r`n4. 返回「音量监控」，点击「开始监测」。`r`n`r`n「程序」文件夹无需手动打开。请保留完整目录。"
+Set-Content -Encoding UTF8 -Path (Join-Path $studentRoot '使用说明.txt') -Value '双击「启动学生端.cmd」，完成系统授权，等待教师批准。以后登录后自动运行。「程序」文件夹无需手动打开，请保留完整目录。'
 Copy-Item scripts/prepare-image.ps1,scripts/agent-deployment.example.json,IMAGE-DEPLOYMENT.md $student
-Copy-Item IMAGE-DEPLOYMENT.md $teacher
-Compress-Archive -Path "$student/*" -DestinationPath "artifacts/RoomScope-student-v0.3.2-$Runtime.zip" -Force
-Copy-Item "artifacts/RoomScope-student-v0.3.2-$Runtime.zip" (Join-Path $teacher 'student-template.zip')
-Compress-Archive -Path "$teacher/*" -DestinationPath "artifacts/RoomScope-teacher-v0.3.2-$Runtime.zip" -Force
+Compress-Archive -Path "$studentRoot/*" -DestinationPath "artifacts/机房音量管理-学生端-v0.4-$Runtime.zip" -Force
+Copy-Item "artifacts/机房音量管理-学生端-v0.4-$Runtime.zip" (Join-Path $teacher 'student-template.zip')
+Compress-Archive -Path "$teacherRoot/*" -DestinationPath "artifacts/机房音量管理-教师端-v0.4-$Runtime.zip" -Force
 Write-Host '运行包已生成，保存在 artifacts 目录。'
