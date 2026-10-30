@@ -1,8 +1,10 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'console.ps1')
+trap { Write-StartupError $_; exit 1 }
 Set-Location $PSScriptRoot
 $dataDirectory = Join-Path $PSScriptRoot 'data'
 $configPath = Join-Path $dataDirectory 'https.json'
-if (-not (Test-Path $configPath)) { throw 'Run configure-https.ps1 -ServerIp <teacher-IP> first.' }
+if (-not (Test-Path $configPath)) { throw '尚未配置连接，请双击 start-teacher.cmd 自动配置，或先运行 configure-https.ps1。' }
 $settings = Get-Content $configPath -Raw | ConvertFrom-Json
 $secret = (Get-Content (Join-Path $dataDirectory 'https-password.dpapi') -Raw).Trim() | ConvertTo-SecureString
 $pointer = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
@@ -11,8 +13,8 @@ try {
     $env:ASPNETCORE_Kestrel__Certificates__Default__Path = Join-Path $dataDirectory 'teacher.pfx'
     $env:ASPNETCORE_Kestrel__Certificates__Default__Password = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
     $env:DataDirectory = $dataDirectory
-    Write-Host "RoomScope: https://$($settings.ServerIp):$($settings.Port)"
-    Write-Host 'First-run teacher password: data\initial-password.txt'
+    Write-Host "声域教师看板地址：https://$($settings.ServerIp):$($settings.Port)"
+    Write-Host '首次登录密码保存在 data\initial-password.txt。'
     & (Join-Path $PSScriptRoot 'Noise.Server.exe')
 } finally {
     [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)

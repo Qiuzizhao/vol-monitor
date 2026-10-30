@@ -11,7 +11,12 @@ using Microsoft.AspNetCore.RateLimiting;
 using Noise.Core;
 using Noise.Server;
 
+Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+try
+{
 var builder = WebApplication.CreateBuilder(args);
+builder.Logging.ClearProviders();
+builder.Logging.AddProvider(new ChineseConsoleLoggerProvider());
 if (string.IsNullOrEmpty(builder.Configuration["urls"])) builder.WebHost.UseUrls("http://127.0.0.1:5080");
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 8192);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow);
@@ -165,8 +170,19 @@ app.MapGet("/ws/dashboard", async (HttpContext ctx, RoomStore store) =>
 }).RequireAuthorization();
 
 app.MapFallbackToFile("index.html");
-app.Logger.LogInformation("RoomScope ready. First-run teacher password file: {Path}", Path.Combine(DataDirectory(app.Configuration, app.Environment), "initial-password.txt"));
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    Console.WriteLine("教师服务已启动，请保留此窗口。登录后可开始实验，学生机将自动采集音量。");
+    Console.WriteLine("首次登录密码文件：" + Path.Combine(DataDirectory(app.Configuration, app.Environment), "initial-password.txt"));
+});
+app.Lifetime.ApplicationStopped.Register(() => Console.WriteLine("教师服务已停止。"));
 app.Run();
+}
+catch (Exception e) when (e is not Microsoft.Extensions.Hosting.HostAbortedException)
+{
+    Console.Error.WriteLine("教师服务启动或运行失败，请检查端口是否被占用、证书是否有效、当前账户是否可访问数据目录。");
+    Environment.ExitCode = 1;
+}
 
 static string DataDirectory(IConfiguration config, IWebHostEnvironment environment) =>
     Path.GetFullPath(config["DataDirectory"] ?? Path.Combine(environment.ContentRootPath, "data"));

@@ -5,7 +5,17 @@ using Noise.Core;
 
 namespace Noise.Agent;
 
-public sealed class AudioCapture : IDisposable
+internal interface IAudioInput : IDisposable
+{
+    string? Error { get; }
+    int SamplesPerSecond { get; }
+    bool Running { get; }
+    AudioSummary? Drain();
+    void Start(string deviceId);
+    void Stop();
+}
+
+public sealed class AudioCapture : IAudioInput
 {
     private readonly object lifecycle = new();
     private WasapiCapture? capture;

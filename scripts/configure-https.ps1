@@ -1,14 +1,16 @@
-param(
+﻿param(
     [Parameter(Mandatory=$true)][string]$ServerIp,
     [ValidateRange(1024,65535)][int]$Port = 5081
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'console.ps1')
+trap { Write-StartupError $_; exit 1 }
 $parsedIp = $null
 if (-not [System.Net.IPAddress]::TryParse($ServerIp, [ref]$parsedIp) -or $parsedIp.AddressFamily -ne 'InterNetwork') {
-    throw 'ServerIp must be the teacher computer IPv4 address.'
+    throw '教师地址必须是本机的 IPv4 地址。'
 }
 $teacherDirectory = $PSScriptRoot
-if (-not (Test-Path (Join-Path $teacherDirectory 'Noise.Server.exe'))) { throw 'Run this script from the extracted teacher package.' }
+if (-not (Test-Path (Join-Path $teacherDirectory 'Noise.Server.exe'))) { throw '请在完整解压后的教师端目录中运行此脚本。' }
 $dataDirectory = Join-Path $teacherDirectory 'data'
 New-Item -ItemType Directory -Force $dataDirectory | Out-Null
 # Restrict the credential and private-key directory to the account running the teacher service.
@@ -20,7 +22,7 @@ $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($identity,
 $acl.AddAccessRule($rule)
 Set-Acl -Path $dataDirectory -AclObject $acl
 $certPath = Join-Path $dataDirectory 'teacher.pfx'
-if (Test-Path $certPath) { throw 'HTTPS is already configured. Back up and remove the existing teacher.pfx before reconfiguring.' }
+if (Test-Path $certPath) { throw '已配置连接证书；如需手动重新配置，请先备份并移走现有 teacher.pfx。' }
 $certificate = New-SelfSignedCertificate -Type Custom -Subject "CN=RoomScope Teacher $ServerIp" `
     -TextExtension @("2.5.29.17={text}IPAddress=$ServerIp", '2.5.29.37={text}1.3.6.1.5.5.7.3.1') `
     -KeyAlgorithm RSA -KeyLength 2048 -KeyUsage DigitalSignature,KeyEncipherment `
@@ -33,7 +35,7 @@ Export-PfxCertificate -Cert $certificate -FilePath $certPath -Password $secret |
 ConvertFrom-SecureString $secret | Set-Content (Join-Path $dataDirectory 'https-password.dpapi')
 Export-Certificate -Cert $certificate -FilePath (Join-Path $teacherDirectory 'roomscope-teacher.cer') | Out-Null
 @{ ServerIp = $ServerIp; Port = $Port } | ConvertTo-Json | Set-Content (Join-Path $dataDirectory 'https.json')
-Write-Host "HTTPS configured for https://${ServerIp}:${Port}"
-Write-Host 'Distribute ONLY roomscope-teacher.cer to student computers and import it into CurrentUser\Root.'
-Write-Host 'Keep the data directory and teacher.pfx private. Start with .\start-lan.ps1 under this Windows account.'
-Write-Host "Allow inbound TCP $Port on the teacher computer Windows firewall for your classroom subnet."
+Write-Host "安全连接已配置，教师地址：https://${ServerIp}:${Port}"
+Write-Host '手动部署时，只向学生机分发公开证书 roomscope-teacher.cer，并导入当前用户的受信任根证书。'
+Write-Host '请勿分发 data 目录或 teacher.pfx 私钥；请使用当前 Windows 账户启动教师端。'
+Write-Host "教师机防火墙需要允许机房子网访问端口 $Port；推荐使用 start-teacher.cmd 自动配置。"

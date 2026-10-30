@@ -7,6 +7,7 @@ $previous = Get-Location
 try {
     New-Item -ItemType Directory -Path (Join-Path $fixture 'data'),(Join-Path $fixture 'template') -Force | Out-Null
     Copy-Item (Join-Path $repo 'scripts/start-teacher.ps1') $fixture
+    Copy-Item (Join-Path $repo 'scripts/console.ps1') $fixture
     Set-Content (Join-Path $fixture 'Noise.Server.exe') 'placeholder'
     Set-Content (Join-Path $fixture 'roomscope-teacher.cer') 'public certificate fixture'
     Set-Content (Join-Path $fixture 'data/teacher.pfx') 'PRIVATE KEY - must never enter student ZIP'
@@ -15,6 +16,7 @@ try {
     Set-Content (Join-Path $fixture 'start-lan.ps1') '$global:teacherStarted = $true; $global:LASTEXITCODE = 0'
     Set-Content (Join-Path $fixture 'template/Noise.Agent.exe') 'student binary fixture'
     Copy-Item (Join-Path $repo 'scripts/start-student.cmd'),(Join-Path $repo 'scripts/start-student.ps1') (Join-Path $fixture 'template')
+    Copy-Item (Join-Path $repo 'scripts/console.ps1') (Join-Path $fixture 'template')
     Compress-Archive -Path (Join-Path $fixture 'template/*') -DestinationPath (Join-Path $fixture 'student-template.zip')
     function Get-NetIPConfiguration {
         [pscustomobject]@{ NetAdapter = @{ Status = 'Up' }; IPv4Address = @(@{ IPAddress = '192.168.10.20' }); InterfaceAlias = 'Classroom'; IPv4DefaultGateway = '192.168.10.1' }
@@ -51,7 +53,7 @@ try {
     if ($profile.Server -ne 'https://192.168.10.20:5081' -or -not $profile.AutoEnroll) { throw 'Wrong student classroom profile.' }
     if (-not $profile.ManagedMode -or -not $profile.EnableLoginStartup) { throw 'Managed startup is not enabled in the classroom package.' }
     $files = @(Get-ChildItem $output -Recurse -File | ForEach-Object { $_.Name })
-    if ($files.Count -ne 5 -or 'roomscope-teacher.cer' -notin $files -or 'start-student.cmd' -notin $files -or 'start-student.ps1' -notin $files) { throw 'Unexpected student package contents.' }
+    if ($files.Count -ne 6 -or 'roomscope-teacher.cer' -notin $files -or 'start-student.cmd' -notin $files -or 'start-student.ps1' -notin $files -or 'console.ps1' -notin $files) { throw 'Unexpected student package contents.' }
     Write-Host 'PASS: existing network reused, student ZIP generated, public certificate included, teacher secrets excluded, teacher started.'
 } finally {
     Set-Location $previous

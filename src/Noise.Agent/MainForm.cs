@@ -9,7 +9,6 @@ public sealed class MainForm : Form
     private readonly TextBox name = new() { Text = Environment.MachineName, Dock = DockStyle.Fill };
     private readonly TextBox pairing = new() { Dock = DockStyle.Fill, MaxLength = 8 };
     private readonly ComboBox microphone = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly CheckBox allow = new() { Text = "允许本机在教师开始实验后采集音量", AutoSize = true, Checked = false };
     private readonly Label status = new() { Text = "尚未连接教师机", AutoSize = true, ForeColor = Color.Teal, Font = new Font("Microsoft YaHei UI", 12, FontStyle.Bold) };
     private readonly Label detail = new() { Text = "配对后，需要在教师端将此设备绑定到座位。", AutoSize = true, MaximumSize = new Size(620, 0) };
     private readonly Button connect = new() { Text = "配对并连接", AutoSize = true };
@@ -43,7 +42,7 @@ public sealed class MainForm : Form
         AddRow(root, "教师机地址", server, 1); AddRow(root, "设备名称", name, 2); AddRow(root, "配对码", pairing, 3); AddRow(root, "麦克风", microphone, 4);
         var refresh = new Button { Text = "刷新麦克风", AutoSize = true }; refresh.Click += (_, _) => RefreshDevices();
         root.Controls.Add(refresh, 1, 5);
-        root.Controls.Add(allow, 1, 6);
+        root.Controls.Add(new Label { Text = "教师开始实验后自动采集音量，暂停或结束后自动停止。", AutoSize = true }, 1, 6);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
         buttons.Controls.Add(connect); buttons.Controls.Add(reset); buttons.Controls.Add(retryEnrollment); root.Controls.Add(buttons, 1, 7);
         if (managed)
@@ -55,10 +54,9 @@ public sealed class MainForm : Form
         root.Controls.Add(status, 0, 8); root.SetColumnSpan(status, 2);
         root.Controls.Add(detail, 0, 9); root.SetColumnSpan(detail, 2);
         var note = new Label { Text = "音频只在本机内存中计算，处理后丢弃。\n每秒上传音量统计，不上传录音，不识别讲话内容。" +
-            (managed ? "\n受管模式：关闭窗口仅最小化；无托盘图标。程序退出会自动重启。\n可随时取消麦克风许可；维护退出需教师密码。再次双击启动入口可打开窗口。" : "关闭此窗口将停止采集。"), AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(0, 16, 0, 0) };
+            (managed ? "\n受管模式：关闭窗口仅最小化；无托盘图标。程序退出会自动重启。\n维护退出需教师密码。再次双击启动入口可打开窗口。" : "关闭此窗口将停止采集。"), AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(0, 16, 0, 0) };
         root.Controls.Add(note, 0, 10); root.SetColumnSpan(note, 2);
         var menu = new ContextMenuStrip(); menu.Items.Add("显示窗口", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); });
-        menu.Items.Add("关闭本机采集", null, (_, _) => allow.Checked = false);
         if (!managed) menu.Items.Add("退出", null, (_, _) => Close()); tray.ContextMenuStrip = menu;
         tray.DoubleClick += (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); };
         Resize += (_, _) => { if (!managed && WindowState == FormWindowState.Minimized) Hide(); };
@@ -70,7 +68,6 @@ public sealed class MainForm : Form
             await StopEnrollment();
             if (worker is not null) await worker.DisposeAsync(); worker = null; config = null;
             try { AgentConfig.Clear(); PendingIdentity.Clear(); } catch (IOException e) { detail.Text = e.Message; }
-            allow.Checked = false;
             SetConnected(false); status.Text = "已断开，麦克风停止";
         };
         retryEnrollment.Click += async (_, _) =>
@@ -79,7 +76,6 @@ public sealed class MainForm : Form
             try { PendingIdentity.Clear(); StartEnrollment(); }
             catch (Exception e) { detail.Text = e.Message; }
         };
-        allow.CheckedChanged += (_, _) => { if (worker is not null) worker.Allowed = allow.Checked; };
         FormClosing += OnClosing;
         RefreshDevices();
         connect.Enabled = false;
@@ -189,7 +185,7 @@ public sealed class MainForm : Form
     private void BeginWorker(AgentConfig saved)
     {
         retryEnrollment.Visible = false;
-        worker = new AgentWorker(saved) { Allowed = allow.Checked };
+        worker = new AgentWorker(saved);
         worker.Updated += (message, description) =>
         {
             if (IsDisposed || closing) return;
@@ -207,7 +203,7 @@ public sealed class MainForm : Form
                     try
                     {
                         if (worker is not null) await worker.DisposeAsync();
-                        worker = null; config = null; allow.Checked = false;
+                        worker = null; config = null;
                         AgentConfig.Clear(); PendingIdentity.Clear(); SetConnected(false);
                         if (profile?.AutoEnroll == true) { await StopEnrollment(); StartEnrollment(); }
                         else status.Text = "授权已撤销，请重新配对";
