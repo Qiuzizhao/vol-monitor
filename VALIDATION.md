@@ -1,5 +1,12 @@
 # v0.2 验证记录
 
+## 简化启动流程（2026-10-30）
+
+- 新增教师 / 学生双击入口；教师入口自动选择网络、准备证书、防火墙并生成课堂专用学生 ZIP。
+- Windows PowerShell 5.1 启动流程冒烟检查通过：模拟多网卡环境沿用已配置地址，实际生成和解压学生 ZIP，检查接入地址、自动申请开关、公开证书和启动入口，确认包内不含教师私钥和密码。运行方式：`powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/startup-smoke.ps1`。
+- PowerShell 脚本语法检查通过。冒烟检查模拟了证书、防火墙及服务启动，不修改系统信任或防火墙。
+- 本次 Windows 环境仅有 .NET 9 SDK，未重新构建需要 .NET 10 的完整运行包。真实证书信任提示、管理员防火墙授权、浏览器自动打开和局域网学生接入仍需实机验证。
+
 日期：2026-10-30。构建环境：Linux x64、.NET 10 SDK、Node.js 24、Chromium。
 
 ## 已完成
