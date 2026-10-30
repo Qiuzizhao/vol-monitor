@@ -1,5 +1,7 @@
 {
   "Server": "https://192.168.1.10:5081",
   "AutoEnroll": true,
-  "IdentityDirectory": null
+  "IdentityDirectory": null,
+  "ManagedMode": true,
+  "EnableLoginStartup": true
 }

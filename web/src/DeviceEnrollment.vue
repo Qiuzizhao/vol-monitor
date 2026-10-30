@@ -36,7 +36,7 @@ function downloadProfile(){
  try{
   const url=new URL(profileServer.value.trim());
   if(url.pathname!=='/'||url.search||url.hash||url.username||url.password||!(url.protocol==='https:'||url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname)))throw new Error('请填写教师机 HTTPS 根地址，例如 https://192.168.1.10:5081。');
-  const profile={Server:url.origin,AutoEnroll:true,IdentityDirectory:identityDirectory.value.trim()||null};
+  const profile={Server:url.origin,AutoEnroll:true,IdentityDirectory:identityDirectory.value.trim()||null,ManagedMode:true,EnableLoginStartup:true};
   const objectUrl=URL.createObjectURL(new Blob([JSON.stringify(profile,null,2)+'\n'],{type:'application/json'}));
   const a=document.createElement('a');a.href=objectUrl;a.download='agent-deployment.json';a.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),2000);
   emit('notice','通用配置已导出。请放到学生端程序旁，封装母盘前运行 prepare-image.ps1 清除身份。');

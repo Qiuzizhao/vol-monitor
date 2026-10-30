@@ -22,7 +22,7 @@ function Clear-CurrentIdentity {
 }
 # Clean both the old configured location and the new target, for this Windows account.
 Clear-CurrentIdentity
-$deploymentProfile = @{ Server = $serverUri.GetLeftPart([UriPartial]::Authority); AutoEnroll = $true; IdentityDirectory = $IdentityDirectory }
+$deploymentProfile = @{ Server = $serverUri.GetLeftPart([UriPartial]::Authority); AutoEnroll = $true; IdentityDirectory = $IdentityDirectory; ManagedMode = $true; EnableLoginStartup = [bool]$EnableLoginStartup }
 $deploymentProfile | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $PSScriptRoot 'agent-deployment.json')
 Clear-CurrentIdentity
 if ($EnableLoginStartup) {

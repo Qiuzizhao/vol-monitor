@@ -23,9 +23,15 @@ public sealed class MainForm : Form
     private CancellationTokenSource? enrollmentStopping;
     private Task? enrollmentTask;
     private bool closing;
+    private readonly bool managed;
+    private bool maintenanceExit;
+    private readonly EventWaitHandle showSignal = new(false, EventResetMode.AutoReset, AgentSupervisor.ShowEvent);
+    private readonly System.Windows.Forms.Timer showTimer = new() { Interval = 500 };
 
-    public MainForm()
+    public MainForm(bool managed = false)
     {
+        this.managed = managed;
+        tray.Visible = !managed;
         Text = "声域 RoomScope · 学生端";
         ClientSize = new Size(720, 510); MinimumSize = new Size(640, 540);
         Font = new Font("Microsoft YaHei UI", 10); BackColor = Color.White;
@@ -40,15 +46,24 @@ public sealed class MainForm : Form
         root.Controls.Add(allow, 1, 6);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
         buttons.Controls.Add(connect); buttons.Controls.Add(reset); buttons.Controls.Add(retryEnrollment); root.Controls.Add(buttons, 1, 7);
+        if (managed)
+        {
+            var maintenance = new Button { Text = "教师维护退出", AutoSize = true };
+            maintenance.Click += async (_, _) => await MaintenanceExit();
+            buttons.Controls.Add(maintenance);
+        }
         root.Controls.Add(status, 0, 8); root.SetColumnSpan(status, 2);
         root.Controls.Add(detail, 0, 9); root.SetColumnSpan(detail, 2);
-        var note = new Label { Text = "音频只在本机内存中计算，处理后丢弃。\n每秒上传音量统计，不上传录音，不识别讲话内容。关闭此窗口将停止采集。", AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(0, 16, 0, 0) };
+        var note = new Label { Text = "音频只在本机内存中计算，处理后丢弃。\n每秒上传音量统计，不上传录音，不识别讲话内容。" +
+            (managed ? "\n受管模式：关闭窗口仅最小化；无托盘图标。程序退出会自动重启。\n可随时取消麦克风许可；维护退出需教师密码。再次双击启动入口可打开窗口。" : "关闭此窗口将停止采集。"), AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(0, 16, 0, 0) };
         root.Controls.Add(note, 0, 10); root.SetColumnSpan(note, 2);
         var menu = new ContextMenuStrip(); menu.Items.Add("显示窗口", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); });
         menu.Items.Add("关闭本机采集", null, (_, _) => allow.Checked = false);
-        menu.Items.Add("退出", null, (_, _) => Close()); tray.ContextMenuStrip = menu;
+        if (!managed) menu.Items.Add("退出", null, (_, _) => Close()); tray.ContextMenuStrip = menu;
         tray.DoubleClick += (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); };
-        Resize += (_, _) => { if (WindowState == FormWindowState.Minimized) Hide(); };
+        Resize += (_, _) => { if (!managed && WindowState == FormWindowState.Minimized) Hide(); };
+        showTimer.Tick += (_, _) => { if (showSignal.WaitOne(0)) { Show(); WindowState = FormWindowState.Normal; Activate(); } };
+        showTimer.Start();
         connect.Click += async (_, _) => await Enroll();
         reset.Click += async (_, _) =>
         {
@@ -178,7 +193,7 @@ public sealed class MainForm : Form
         worker.Updated += (message, description) =>
         {
             if (IsDisposed || closing) return;
-            try { BeginInvoke(() => { status.Text = message; detail.Text = description; tray.Text = "声域 · " + message[..Math.Min(message.Length, 45)]; }); }
+            try { BeginInvoke(() => { status.Text = message; Text = "声域 · " + message; detail.Text = description; tray.Text = "声域 · " + message[..Math.Min(message.Length, 45)]; }); }
             catch (InvalidOperationException) { }
         };
         worker.AuthorizationLost += () =>
@@ -207,15 +222,44 @@ public sealed class MainForm : Form
     private void SetConnected(bool value)
     {
         server.Enabled = name.Enabled = pairing.Enabled = microphone.Enabled = connect.Visible = !value;
-        reset.Visible = value;
+        reset.Visible = value && !managed;
+    }
+    private async Task MaintenanceExit()
+    {
+        using var dialog = new Form { Text = "教师维护退出", ClientSize = new Size(390, 155), StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false };
+        var label = new Label { Text = "请输入教师看板密码（需要连接教师机）", AutoSize = true, Location = new Point(16, 15) };
+        var password = new TextBox { UseSystemPasswordChar = true, MaxLength = 256, Location = new Point(16, 48), Width = 355 };
+        var confirm = new Button { Text = "验证并退出", DialogResult = DialogResult.OK, Location = new Point(245, 98), Width = 125 };
+        dialog.Controls.AddRange([label, password, confirm]); dialog.AcceptButton = confirm;
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            Enabled = false;
+            if (!await AgentSupervisor.RequestMaintenance(password.Text)) { detail.Text = "教师密码不正确，无法退出。"; return; }
+            maintenanceExit = true;
+            Close();
+        }
+        catch (Exception e) when (e is IOException or OperationCanceledException) { detail.Text = "维护验证未完成，请确认教师机在线：" + e.Message; }
+        finally { password.Clear(); if (!closing) Enabled = true; }
     }
     private async void OnClosing(object? sender, FormClosingEventArgs e)
     {
         if (closing) return;
+        if (managed && !maintenanceExit && e.CloseReason == CloseReason.UserClosing)
+        {
+            e.Cancel = true;
+            WindowState = FormWindowState.Minimized;
+            return;
+        }
         e.Cancel = true; closing = true; Enabled = false;
         await StopEnrollment();
         if (worker is not null) await worker.DisposeAsync();
-        tray.Dispose(); Close();
+        Close();
+    }
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { showTimer.Dispose(); showSignal.Dispose(); tray.Dispose(); }
+        base.Dispose(disposing);
     }
     private sealed record MicrophoneItem(string Id, string Name) { public override string ToString() => Name; }
 }

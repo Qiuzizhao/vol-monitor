@@ -84,7 +84,7 @@ app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSecond
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGet("/api/health", () => new { status = "ok", version = "0.2.0" });
+app.MapGet("/api/health", () => new { status = "ok", version = typeof(RoomStore).Assembly.GetName().Version!.ToString(3) });
 app.MapPost("/api/login", async (LoginRequest request, TeacherAccess access, HttpContext ctx) =>
 {
     if (string.IsNullOrEmpty(request.Password) || !access.Verify(request.Password)) return Results.Json(new { error = "密码不正确。" }, statusCode: 401);

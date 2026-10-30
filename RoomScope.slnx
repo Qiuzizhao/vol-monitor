@@ -5,6 +5,7 @@
     <Project Path="src/Noise.Server/Noise.Server.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Noise.Agent.Tests/Noise.Agent.Tests.csproj" />
     <Project Path="tests/Noise.Tests/Noise.Tests.csproj" />
   </Folder>
 </Solution>

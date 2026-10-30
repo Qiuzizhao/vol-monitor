@@ -32,12 +32,24 @@ try {
         else { Microsoft.PowerShell.Utility\New-Object -TypeName $TypeName -ArgumentList $ArgumentList }
     }
     function Start-Job { param($ArgumentList, $ScriptBlock) return $null }
+    function New-Item {
+        param($Path, $ItemType, [switch]$Force)
+        if ($Path -like 'HKCU:*') { return }
+        Microsoft.PowerShell.Management\New-Item @PSBoundParameters
+    }
+    function New-ItemProperty {
+        param($Path, $Name, $Value, $PropertyType, [switch]$Force)
+        if ($Path -notlike 'HKCU:*' -or $Name -ne 'RoomScopeTeacher' -or $Value -notlike '*-WindowStyle Hidden*-AtLogin') { throw 'Invalid teacher login startup registration.' }
+        $global:teacherStartupRegistered = $true
+    }
     & (Join-Path $fixture 'start-teacher.ps1')
     if (-not $global:teacherStarted) { throw 'Teacher service was not started.' }
+    if (-not $global:teacherStartupRegistered) { throw 'Teacher login startup was not registered.' }
     $output = Join-Path $fixture 'output'
     Expand-Archive -LiteralPath (Join-Path $fixture 'RoomScope-classroom-student.zip') -DestinationPath $output
     $profile = Get-Content (Join-Path $output 'agent-deployment.json') -Raw | ConvertFrom-Json
     if ($profile.Server -ne 'https://192.168.10.20:5081' -or -not $profile.AutoEnroll) { throw 'Wrong student classroom profile.' }
+    if (-not $profile.ManagedMode -or -not $profile.EnableLoginStartup) { throw 'Managed startup is not enabled in the classroom package.' }
     $files = @(Get-ChildItem $output -Recurse -File | ForEach-Object { $_.Name })
     if ($files.Count -ne 5 -or 'roomscope-teacher.cer' -notin $files -or 'start-student.cmd' -notin $files -or 'start-student.ps1' -notin $files) { throw 'Unexpected student package contents.' }
     Write-Host 'PASS: existing network reused, student ZIP generated, public certificate included, teacher secrets excluded, teacher started.'
