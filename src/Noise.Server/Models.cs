@@ -14,6 +14,8 @@ public sealed class Device
     public string? MicrophoneId { get; set; }
     public double? Baseline { get; set; }
     public string? BaselineId { get; set; }
+    public string? AutoCalibrationId { get; set; }
+    public DateTimeOffset? AutoCalibrationUntil { get; set; }
     public DateTimeOffset? LastSeen { get; set; }
     public DateTimeOffset? LastSample { get; set; }
     public string Status { get; set; } = "offline";

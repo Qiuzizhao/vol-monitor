@@ -168,8 +168,9 @@ public sealed class ApiTests
         var identity = new { DeviceId = registered.DeviceId!, Token = claim };
         agent.DefaultRequestHeaders.Authorization = new("Bearer", identity.Token);
         Assert.Equal(HttpStatusCode.OK,(await teacher.PutAsJsonAsync($"/api/teacher/devices/{identity.DeviceId}/seat", new SeatAssignment("seat-01"))).StatusCode);
-        var start = await teacher.PostAsJsonAsync("/api/teacher/sessions", new SessionRequest("Integration test"));
-        var sessionId = (await start.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        var live = (await teacher.GetFromJsonAsync<Dashboard>("/api/teacher/dashboard"))!;
+        var sessionId = live.Session!.Id;
+        Assert.Equal("running", live.Session.Status);
         var report = await agent.PostAsJsonAsync("/api/telemetry", new DeviceReport("boot",1,sessionId,"idle","mic"));
         Assert.Equal("running",(await report.Content.ReadFromJsonAsync<DeviceCommand>())!.State);
         Assert.Equal(HttpStatusCode.OK,(await teacher.PostAsync("/api/teacher/calibrations",null)).StatusCode);
@@ -183,9 +184,11 @@ public sealed class ApiTests
         var export = await teacher.GetAsync($"/api/teacher/sessions/{sessionId}/experiment.json");
         Assert.Equal("application/json",export.Content.Headers.ContentType!.MediaType);
         Assert.Contains("播放测试音源",JsonSerializer.Serialize(JsonSerializer.Deserialize<JsonElement>(await export.Content.ReadAsStringAsync()),new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
-        await teacher.PostAsync("/api/teacher/sessions/current/pause",null);
+        Assert.Equal(HttpStatusCode.NotFound, (await teacher.PostAsJsonAsync("/api/teacher/sessions", new SessionRequest("old start"))).StatusCode);
+        foreach (var action in new[] { "pause", "resume", "end" })
+            Assert.Equal(HttpStatusCode.NotFound, (await teacher.PostAsync("/api/teacher/sessions/current/" + action,null)).StatusCode);
         report=await agent.PostAsJsonAsync("/api/telemetry",new DeviceReport("boot",3,sessionId,"idle","mic"));
-        Assert.Equal("idle",(await report.Content.ReadFromJsonAsync<DeviceCommand>())!.State);
+        Assert.Equal("running",(await report.Content.ReadFromJsonAsync<DeviceCommand>())!.State);
         await teacher.DeleteAsync($"/api/teacher/devices/{identity.DeviceId}");
         Assert.Equal(HttpStatusCode.Unauthorized,(await agent.PostAsJsonAsync("/api/telemetry",new DeviceReport("boot",4,sessionId,"idle","mic"))).StatusCode);
     }

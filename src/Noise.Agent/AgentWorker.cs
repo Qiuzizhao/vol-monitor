@@ -81,7 +81,7 @@ public sealed class AgentWorker : IAsyncDisposable
                 {
                     audio.Stop(); baselineSamples.Clear(); currentCalibration = null;
                     Updated?.Invoke("待机",
-                        next.Seat is null ? "已连接教师机，等待绑定座位" : $"座位 {next.Seat} · 等待教师开始监测");
+                        next.Seat is null ? "已连接教师机，等待绑定座位" : $"座位 {next.Seat} · 等待连接恢复");
                 }
                 await delay(TimeSpan.FromSeconds(next.State == "running" ? 1 : 2), ct);
             }

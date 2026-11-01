@@ -46,7 +46,7 @@ builder.Services.AddSingleton<RoomStore>(services =>
     var config = services.GetRequiredService<IConfiguration>();
     var directory = DataDirectory(config, services.GetRequiredService<IWebHostEnvironment>());
     return new RoomStore(directory, config["Room:Name"] ?? "信息科技机房 01",
-        config.GetValue("Room:Rows", 6), config.GetValue("Room:Columns", 6));
+        config.GetValue("Room:Rows", 6), config.GetValue("Room:Columns", 6), continuousMonitoring: true);
 });
 builder.Services.AddSingleton<TeacherAccess>(services =>
 {
@@ -137,8 +137,6 @@ teacher.MapPost("/enrollment/approve", (EnrollmentBatch request, RoomStore store
 teacher.MapPost("/enrollment/{id}/reject", (string id, RoomStore store) => { store.RejectEnrollment(id); return Results.Ok(); });
 teacher.MapPut("/devices/{id}/seat", (string id, SeatAssignment request, RoomStore store) => { store.Assign(id, request.SeatId); return Results.Ok(); });
 teacher.MapDelete("/devices/{id}", (string id, RoomStore store) => { store.DeleteDevice(id); return Results.Ok(); });
-teacher.MapPost("/sessions", (SessionRequest request, RoomStore store) => store.Start(request));
-teacher.MapPost("/sessions/current/{action}", (string action, RoomStore store) => { store.Transition(action); return Results.Ok(); });
 teacher.MapPost("/calibrations", (RoomStore store) => { store.Calibrate(); return Results.Ok(); });
 teacher.MapPost("/annotations", (AnnotationRequest request, RoomStore store) => { store.AddAnnotation(request.Text); return Results.Ok(); });
 teacher.MapGet("/sessions", (RoomStore store) => store.History());

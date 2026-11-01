@@ -37,4 +37,4 @@ Write-Host ('教师服务地址：' + $deploymentProfile.Server)
 Write-Host '封装镜像前，请勿再次启动母盘客户端或申请接入。'
 Write-Host '请让克隆后的电脑名称对应实际座位（如 PC01、PC02），或在教师端核对座位。'
 Write-Host '部署完成后，在教师端开启批量接入窗口，并批准待接入电脑。'
-Write-Host '登录自启对当前 Windows 账户生效；设备获批并绑定后，由教师实验统一控制音量采集。'
+Write-Host '登录自启对当前 Windows 账户生效；设备获批并绑定后自动持续监测音量。'

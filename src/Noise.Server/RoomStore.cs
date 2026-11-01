@@ -11,6 +11,7 @@ public sealed partial class RoomStore : IDisposable
     private readonly object gate = new();
     private readonly SqliteConnection db;
     private readonly TimeProvider clock;
+    private readonly bool continuousMonitoring;
     private readonly Dictionary<string, Device> devices = new();
     private readonly Dictionary<string, string> tokens = new();
     private readonly Dictionary<string, AlertLatch> latches = new();
@@ -28,11 +29,12 @@ public sealed partial class RoomStore : IDisposable
         new("middle-left", "中排左区"), new("middle-right", "中排右区"),
         new("back-left", "后排左区"), new("back-right", "后排右区")];
 
-    public RoomStore(string directory, string name, int rows = 6, int columns = 6, TimeProvider? timeProvider = null)
+    public RoomStore(string directory, string name, int rows = 6, int columns = 6, TimeProvider? timeProvider = null, bool continuousMonitoring = false)
     {
         if (rows is < 3 or > 20 || columns is < 2 or > 16 || columns % 2 != 0)
             throw new ArgumentException("Rows must be 3–20; columns must be even and 2–16.");
         clock = timeProvider ?? TimeProvider.System;
+        this.continuousMonitoring = continuousMonitoring;
         RoomName = name;
         Directory.CreateDirectory(directory);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
@@ -55,7 +57,7 @@ public sealed partial class RoomStore : IDisposable
             CREATE TABLE IF NOT EXISTS room_layout(id INTEGER PRIMARY KEY,rows INTEGER,columns INTEGER);
             """
         );
-        // A restart never silently resumes microphone collection.
+        // Close the previous process's internal session before initializing live monitoring.
         Exec("UPDATE sessions SET status='ended',ended_at=$now WHERE status!='ended'", ("$now", Now.ToString("O")));
         if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM seats"), CultureInfo.InvariantCulture) == 0)
         {
@@ -87,6 +89,7 @@ public sealed partial class RoomStore : IDisposable
             }
         foreach (var d in devices.Values) LoadBaseline(d);
         foreach (var z in Zones) latches[z.Id] = new();
+        if (continuousMonitoring) Start(new("机房监控"));
     }
 
     private DateTimeOffset Now => clock.GetUtcNow();
@@ -199,6 +202,7 @@ public sealed partial class RoomStore : IDisposable
             if (d.MicrophoneId != report.MicrophoneId && report.MicrophoneId is not null)
             {
                 d.MicrophoneId = report.MicrophoneId; d.Baseline = null; d.BaselineId = null; d.Smoothed = null;
+                d.AutoCalibrationId = null; d.AutoCalibrationUntil = null;
                 Exec("UPDATE devices SET microphone_id=$mic WHERE id=$id", ("$mic", d.MicrophoneId), ("$id", d.Id));
                 LoadBaseline(d);
             }
@@ -224,9 +228,17 @@ public sealed partial class RoomStore : IDisposable
     {
         var active = session is { Status: "running", Demo: false } && d.SeatId is not null;
         var seat = Seats.FirstOrDefault(s => s.Id == d.SeatId);
+        var pendingId = active && Now <= calibrationUntil ? calibrationId : null;
+        var pendingUntil = pendingId is not null ? calibrationUntil : null;
+        if (continuousMonitoring && active && pendingId is null && d.Baseline is null && d.MicrophoneId is not null)
+        {
+            if (d.AutoCalibrationId is null || Now > d.AutoCalibrationUntil)
+            { d.AutoCalibrationId = Guid.NewGuid().ToString("N"); d.AutoCalibrationUntil = Now.AddSeconds(20); }
+            pendingId = d.AutoCalibrationId; pendingUntil = d.AutoCalibrationUntil;
+        }
         return new(session is { Demo: false, Status: not "ended" } ? session.Id : null,
-            active ? "running" : "idle", active && Now <= calibrationUntil ? calibrationId : null,
-            active ? calibrationUntil : null, seat?.Label, seat is null ? null : Zones.First(z => z.Id == seat.ZoneId).Name, Acoustics.AlgorithmVersion);
+            active ? "running" : "idle", pendingId, pendingUntil,
+            seat?.Label, seat is null ? null : Zones.First(z => z.Id == seat.ZoneId).Name, Acoustics.AlgorithmVersion);
     }
 
     public void SaveCalibration(string id, CalibrationReport report)
@@ -234,11 +246,14 @@ public sealed partial class RoomStore : IDisposable
         lock (gate)
         {
             var d = devices[id];
+            var validCalibration = (calibrationId is not null && report.CalibrationId == calibrationId && Now <= calibrationUntil) ||
+                (continuousMonitoring && d.AutoCalibrationId is not null && report.CalibrationId == d.AutoCalibrationId && Now <= d.AutoCalibrationUntil);
             if (session is not { Status: "running", Demo: false } || report.SessionId != session.Id ||
-                report.CalibrationId != calibrationId || Now > calibrationUntil || d.MicrophoneId != report.MicrophoneId ||
+                d.SeatId is null || !validCalibration || d.MicrophoneId != report.MicrophoneId ||
                 report.SampleCount is < 10 or > 20 || !double.IsFinite(report.BaselineDbfs) || report.BaselineDbfs is < -110 or > -3)
                 throw new ArgumentException("校准已过期，或采样无效，请检查麦克风后重试。");
             d.Baseline = report.BaselineDbfs; d.BaselineId = report.CalibrationId; d.Smoothed = null;
+            d.AutoCalibrationId = null; d.AutoCalibrationUntil = null;
             Exec("INSERT OR REPLACE INTO calibrations VALUES($id,$device,$mic,$baseline,$samples,$time)",
                 ("$id", report.CalibrationId), ("$device", id), ("$mic", report.MicrophoneId),
                 ("$baseline", report.BaselineDbfs), ("$samples", report.SampleCount), ("$time", Now.ToString("O")));
@@ -328,6 +343,8 @@ public sealed partial class RoomStore : IDisposable
             var valid = seats.Where(s => s.Score is not null).Select(s => s.Score!.Value).ToArray();
             trend.Enqueue(new(now, valid.Length == 0 ? null : Math.Round(valid.Average(), 1), zones.ToDictionary(z => z.Id, z => z.Score)));
             while (trend.Count > 120) trend.Dequeue();
+            // Continuous monitoring only needs the live view and saved calibration, not an unlimited metrics archive.
+            if (continuousMonitoring) return;
             var bucket = now.ToUnixTimeSeconds() / 5 * 5;
             if (bucket == lastBucket) return;
             lastBucket = bucket;

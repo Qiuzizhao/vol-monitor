@@ -8,8 +8,6 @@ const data=ref<Dashboard|null>(null),page=ref('live'),busy=ref(false),connected=
 const loading=ref(true),password=ref(''),loginError=ref('');
 const local=['127.0.0.1','localhost','[::1]'].includes(location.hostname);
 let socket:WebSocket|null=null,retry:ReturnType<typeof setTimeout>|undefined,toastTimer:ReturnType<typeof setTimeout>|undefined;
-const active=computed(()=>!!data.value?.session&&data.value.session.status!=='ended');
-const running=computed(()=>data.value?.session?.status==='running');
 const online=computed(()=>data.value?.devices.filter(d=>d.status!=='offline').length??0);
 const rows=computed(()=>Array.from({length:data.value?.layoutRows??6},(_,i)=>i+1));
 const columns=computed(()=>data.value?.layoutColumns??6);
@@ -38,14 +36,6 @@ function connect(){
 async function login(){await perform(async()=>{await request('/api/login','POST',{password:password.value});password.value='';await refresh();connect();});}
 async function logout(){await api('/logout','POST');location.reload();}
 async function calibrate(){await perform(async()=>{await api('/calibrations','POST');await refresh();toast('请保持安静约 10 秒。');});}
-async function start(){
- const devices=data.value?.devices.filter(d=>d.seatId&&d.status!=='offline')??[];
- if(!devices.length){page.value='devices';toast('请先接入学生机。');return;}
- const needsCalibration=devices.some(d=>d.baselineDbfs===null);
- const ok=await perform(async()=>{await api('/sessions','POST',{name:`机房监控 ${new Date().toLocaleString('zh-CN')}`,mode:'quiet',demo:false});await refresh();});
- if(ok&&needsCalibration)await calibrate();
-}
-async function transition(action:string){await perform(async()=>{await api('/sessions/current/'+action,'POST');await refresh();});}
 async function bind(device:Device,event:Event){const seatId=(event.target as HTMLSelectElement).value;await perform(async()=>{await api(`/devices/${device.id}/seat`,'PUT',{seatId});await refresh();});}
 async function remove(device:Device){await perform(async()=>{await api(`/devices/${device.id}`,'DELETE');await refresh();});}
 async function saveLayout(cells:string[][]){if(await perform(async()=>{data.value=await api('/layout','PUT',{cells});}))editingLayout.value=false;}
@@ -61,7 +51,7 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
   <header class="app-header"><nav aria-label="主导航"><button :class="{active:page==='live'}" @click="page='live'">监控</button><button :class="{active:page==='devices'}" @click="page='devices'">学生机</button></nav><span class="connection">{{connected?`在线 ${online} / ${data.devices.length}`:'连接中断'}}</span><button v-if="!local" class="text-button" @click="logout">退出登录</button></header>
   <main>
    <template v-if="page==='live'">
-    <section class="toolbar"><strong>{{calibrating?'校准中':active?(running?'监测中':'已暂停'):'未开始'}}</strong><div class="actions"><button class="button" @click="editingLayout=true">布局</button><button v-if="!active" class="button primary" @click="start" :disabled="busy||!connected">开始</button><template v-else><button class="button primary" @click="transition(running?'pause':'resume')" :disabled="busy||!connected">{{running?'暂停':'继续'}}</button><button class="button" @click="transition('end')" :disabled="busy">结束</button><button class="button" @click="calibrate" :disabled="busy||!running||calibrating||data.session?.demo">校准</button></template></div></section>
+    <section class="toolbar"><strong>{{calibrating?'校准中':'监测中'}}</strong><div class="actions"><button class="button" @click="editingLayout=true">布局</button><button class="button" @click="calibrate" :disabled="busy||!connected||calibrating">校准</button></div></section>
     <div class="monitor-grid"><section class="panel seat-panel"><div class="classroom"><div class="teacher-desk">讲台</div><div class="seat-rows"><div v-for="row in rows" :key="row" class="seat-row" :style="{'--columns':columns}"><template v-for="col in columns" :key="col"><div v-if="seatAt(row,col)" class="seat" :class="tone(seatAt(row,col)!.score)" :aria-label="`座位 ${seatAt(row,col)!.label}，${statuses[seatAt(row,col)!.status]}，音量 ${score(seatAt(row,col)!.score)}`" :title="seatAt(row,col)!.deviceName??statuses[seatAt(row,col)!.status]"><span>{{seatAt(row,col)!.label}}</span><strong>{{score(seatAt(row,col)!.score)}}</strong><small v-if="seatAt(row,col)!.score===null">{{statuses[seatAt(row,col)!.status]}}</small></div><div v-else class="aisle-cell" aria-hidden="true"></div></template></div></div></div></section></div>
    </template>
    <template v-else><DeviceEnrollment :api="api" :seats="data.seats" :devices="data.devices" @notice="toast"/><section v-if="data.devices.length" class="panel"><div class="table-scroll"><table><thead><tr><th>IP</th><th>座位</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="device in data.devices" :key="device.id"><td>{{device.name}}</td><td><select :value="device.seatId??''" :aria-label="`${device.name} 的座位`" @change="bind(device,$event)" :disabled="busy"><option value="" disabled>选择座位</option><option v-for="seat in data.seats" :key="seat.id" :value="seat.id" :disabled="data.devices.some(d=>d.id!==device.id&&d.seatId===seat.id)">{{seat.label}} 号</option></select></td><td><span class="device-status" :class="{offline:device.status==='offline'}">{{statuses[device.status]??device.status}}</span></td><td><button class="text-button danger" @click="remove(device)" :disabled="busy">移除</button></td></tr></tbody></table></div></section></template>
