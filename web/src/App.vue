@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
 import type { Dashboard, Device } from './types';
 import DeviceEnrollment from './DeviceEnrollment.vue';
@@ -14,6 +14,9 @@ const rows=computed(()=>Array.from({length:data.value?.layoutRows??6},(_,i)=>i+1
 const columns=computed(()=>data.value?.layoutColumns??6);
 const editingLayout=ref(false);
 const studentSetup=ref<'package'|'password'|null>(null);
+const removingDevice=ref<Device|null>(null),removeCancel=ref<HTMLButtonElement|null>(null);
+const removingSeat=computed(()=>data.value?.seats.find(s=>s.id===removingDevice.value?.seatId)?.label);
+let removeTrigger:HTMLButtonElement|null=null;
 const seatMap=computed(()=>new Map(data.value?.seats.map(s=>[`${s.row}:${s.column}`,s])));
 const seatAt=(row:number,col:number)=>seatMap.value.get(`${row}:${col}`);
 const calibrating=computed(()=>data.value?.devices.some(d=>d.status==='calibrating')??false);
@@ -39,7 +42,16 @@ async function login(){await perform(async()=>{await request('/api/login','POST'
 async function logout(){await api('/logout','POST');location.reload();}
 async function calibrate(){await perform(async()=>{await api('/calibrations','POST');await refresh();toast('请保持安静约 10 秒。');});}
 async function bind(device:Device,event:Event){const seatId=(event.target as HTMLSelectElement).value;await perform(async()=>{await api(`/devices/${device.id}/seat`,'PUT',{seatId});await refresh();});}
-async function remove(device:Device){await perform(async()=>{await api(`/devices/${device.id}`,'DELETE');await refresh();});}
+async function remove(device:Device){
+ if(busy.value)return;
+ removeTrigger=document.activeElement instanceof HTMLButtonElement?document.activeElement:null;
+ removingDevice.value=device;await nextTick();removeCancel.value?.focus();
+}
+function cancelRemove(){if(busy.value)return;removingDevice.value=null;removeTrigger?.focus();}
+async function confirmRemove(){
+ const device=removingDevice.value;if(!device)return;
+ await perform(async()=>{await api(`/devices/${device.id}`,'DELETE');removingDevice.value=null;await refresh();toast('已移除学生机。');});
+}
 async function saveLayout(cells:string[][]){if(await perform(async()=>{data.value=await api('/layout','PUT',{cells});}))editingLayout.value=false;}
 function reload(){location.reload();}
 onMounted(async()=>{try{await refresh();connect();}catch(e){loginError.value=local?'请重新启动教师端。':'';}finally{loading.value=false;}});
@@ -61,5 +73,6 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
  </template>
  <SeatLayout v-if="editingLayout&&data" :seats="data.seats" :rows="data.layoutRows" :columns="data.layoutColumns" :busy="busy" @close="editingLayout=false" @save="saveLayout"/>
  <StudentSetup v-if="studentSetup" :mode="studentSetup" :api="api" @close="studentSetup=null" @notice="toast"/>
+ <div v-if="removingDevice" class="layout-overlay" @keydown.esc.prevent="cancelRemove"><section class="layout-editor password-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-device-title" aria-describedby="remove-device-detail"><header class="layout-tools"><strong id="remove-device-title">确认移除学生机？</strong></header><div id="remove-device-detail" class="password-fields"><strong>{{removingDevice.name}} · {{removingSeat?removingSeat+' 号座位':'未分配座位'}}</strong><p>移除后停止采集，重新接入需教师确认。</p></div><footer class="layout-footer"><button ref="removeCancel" class="button" @click="cancelRemove" :disabled="busy">取消</button><button class="button danger" @click="confirmRemove" :disabled="busy">{{busy?'正在移除……':'确认移除'}}</button></footer></section></div>
  <div v-if="notice" class="toast" role="status">{{notice}}<button aria-label="关闭提示" @click="notice=''">关闭</button></div>
 </template>
