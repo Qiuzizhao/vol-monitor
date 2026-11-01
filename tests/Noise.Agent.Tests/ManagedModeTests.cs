@@ -71,7 +71,7 @@ public sealed class ManagedModeTests
                 Assert.False(form.ShowInTaskbar);
                 var tray = (NotifyIcon)typeof(MainForm).GetField("tray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(form)!;
                 Assert.True(tray.Visible);
-                Assert.Contains(tray.ContextMenuStrip!.Items.Cast<ToolStripItem>(), item => item.Text == "退出（需要密码）");
+                Assert.Equal("退出", Assert.Single(tray.ContextMenuStrip!.Items.Cast<ToolStripItem>()).Text);
             }
             catch (Exception e) { error = e; }
         });

@@ -33,34 +33,30 @@ public sealed class MainForm : Form
         this.managed = managed;
         ShowInTaskbar = !managed;
         Text = "机房音量 · 学生端";
-        ClientSize = new Size(440, 240); MinimumSize = new Size(440, 280);
+        ClientSize = managed ? new Size(320, 110) : new Size(440, 240);
+        MinimumSize = managed ? new Size(320, 150) : new Size(440, 280);
         Font = new Font("Microsoft YaHei UI", 10); BackColor = Color.White;
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(28), ColumnCount = 2, RowCount = 5, AutoScroll = true };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 2, RowCount = managed ? 3 : 5, AutoScroll = true };
         root.ColumnStyles.Add(new(SizeType.Absolute, 105)); root.ColumnStyles.Add(new(SizeType.Percent, 100));
         Controls.Add(root);
-        root.Controls.Add(status, 0, 0); root.SetColumnSpan(status, 2);
-        root.Controls.Add(detail, 0, 1); root.SetColumnSpan(detail, 2);
-        root.Controls.Add(name, 0, 2); root.SetColumnSpan(name, 2);
+        root.Controls.Add(name, 0, 0); root.SetColumnSpan(name, 2);
+        root.Controls.Add(status, 0, 1); root.SetColumnSpan(status, 2);
+        if (!managed) { root.Controls.Add(detail, 0, 2); root.SetColumnSpan(detail, 2); }
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 16, 0, 0) };
         var settings = new Button { Text = "连接设置", AutoSize = true };
         settings.Click += (_, _) => { settingsPanel.Visible = !settingsPanel.Visible; ClientSize = new Size(440, settingsPanel.Visible ? 410 : 240); };
         buttons.Controls.Add(settings); buttons.Controls.Add(retryEnrollment);
-        if (managed)
-        {
-            var maintenance = new Button { Text = "管理员退出", AutoSize = true };
-            maintenance.Click += async (_, _) => await MaintenanceExit();
-            buttons.Controls.Add(maintenance);
-        }
-        root.Controls.Add(buttons, 0, 3); root.SetColumnSpan(buttons, 2);
+        if (!managed) { root.Controls.Add(buttons, 0, 3); root.SetColumnSpan(buttons, 2); }
+        else { buttons.Controls.Remove(retryEnrollment); buttons.Dispose(); root.Controls.Add(retryEnrollment, 0, 2); root.SetColumnSpan(retryEnrollment, 2); }
         settingsPanel.ColumnStyles.Add(new(SizeType.Absolute, 90)); settingsPanel.ColumnStyles.Add(new(SizeType.Percent, 100));
         AddRow(settingsPanel, "教师地址", server, 0); AddRow(settingsPanel, "麦克风", microphone, 1);
         var refresh = new Button { Text = "刷新麦克风", AutoSize = true }; refresh.Click += (_, _) => RefreshDevices();
         settingsPanel.Controls.Add(refresh, 1, 2);
         var connections = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
         connections.Controls.Add(connect); connections.Controls.Add(reset); settingsPanel.Controls.Add(connections, 1, 3);
-        root.Controls.Add(settingsPanel, 0, 4); root.SetColumnSpan(settingsPanel, 2);
-        var menu = new ContextMenuStrip(); menu.Items.Add("打开学生端", null, (_, _) => ShowWindow());
-        if (managed) menu.Items.Add("退出（需要密码）", null, async (_, _) => await MaintenanceExit());
+        if (!managed) { root.Controls.Add(settingsPanel, 0, 4); root.SetColumnSpan(settingsPanel, 2); }
+        var menu = new ContextMenuStrip();
+        if (managed) menu.Items.Add("退出", null, async (_, _) => await MaintenanceExit());
         else menu.Items.Add("退出", null, (_, _) => Close());
         tray.ContextMenuStrip = menu;
         tray.DoubleClick += (_, _) => ShowWindow();
@@ -140,7 +136,7 @@ public sealed class MainForm : Form
                 BeginWorker(config);
             }
             else if (profile?.AutoEnroll == true) StartEnrollment();
-            else { status.Text = "等待连接"; settingsPanel.Visible = true; ClientSize = new Size(440, 410); }
+            else { status.Text = "等待连接"; if (!managed) { settingsPanel.Visible = true; ClientSize = new Size(440, 410); } }
         }
         catch (Exception) { status.Text = "连接设置异常"; detail.Text = "请联系教师检查。"; SetConnected(false); }
         finally { if (!closing) connect.Enabled = true; }
@@ -289,7 +285,7 @@ public sealed class MainForm : Form
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { showTimer.Dispose(); showSignal.Dispose(); tray.Dispose(); }
+        if (disposing) { showTimer.Dispose(); showSignal.Dispose(); settingsPanel.Dispose(); detail.Dispose(); tray.ContextMenuStrip?.Dispose(); tray.Dispose(); }
         base.Dispose(disposing);
     }
     private sealed record MicrophoneItem(string Id, string Name) { public override string ToString() => Name; }
