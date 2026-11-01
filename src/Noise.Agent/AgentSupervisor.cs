@@ -38,13 +38,20 @@ internal static class AgentSupervisor
                 var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
                 start.ArgumentList.Add("--managed-child");
                 using var child = Process.Start(start) ?? throw new IOException("学生端无法启动。");
-                // On authorized maintenance or Windows logoff, stop the child as well.
-                using var registration = ct.Register(() =>
+                try { await child.WaitForExitAsync(ct); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
-                    try { if (!child.HasExited) child.Kill(); }
-                    catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
-                });
-                await child.WaitForExitAsync(ct);
+                    // The approved client closes its worker and tray icon itself.
+                    // Force termination only if graceful shutdown does not finish.
+                    using var grace = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    try { await child.WaitForExitAsync(grace.Token); }
+                    catch (OperationCanceledException)
+                    {
+                        try { if (!child.HasExited) child.Kill(); }
+                        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+                    }
+                    throw;
+                }
             }, stopping.Token).GetAwaiter().GetResult();
         }
         finally

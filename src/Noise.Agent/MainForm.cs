@@ -24,13 +24,14 @@ public sealed class MainForm : Form
     private bool closing;
     private readonly bool managed;
     private bool maintenanceExit;
+    private bool initialized;
     private readonly EventWaitHandle showSignal = new(false, EventResetMode.AutoReset, AgentSupervisor.ShowEvent);
     private readonly System.Windows.Forms.Timer showTimer = new() { Interval = 500 };
 
     public MainForm(bool managed = false)
     {
         this.managed = managed;
-        tray.Visible = !managed;
+        ShowInTaskbar = !managed;
         Text = "机房音量 · 学生端";
         ClientSize = new Size(440, 240); MinimumSize = new Size(440, 280);
         Font = new Font("Microsoft YaHei UI", 10); BackColor = Color.White;
@@ -58,11 +59,13 @@ public sealed class MainForm : Form
         var connections = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
         connections.Controls.Add(connect); connections.Controls.Add(reset); settingsPanel.Controls.Add(connections, 1, 3);
         root.Controls.Add(settingsPanel, 0, 4); root.SetColumnSpan(settingsPanel, 2);
-        var menu = new ContextMenuStrip(); menu.Items.Add("显示窗口", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); });
-        if (!managed) menu.Items.Add("退出", null, (_, _) => Close()); tray.ContextMenuStrip = menu;
-        tray.DoubleClick += (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); };
-        Resize += (_, _) => { if (!managed && WindowState == FormWindowState.Minimized) Hide(); };
-        showTimer.Tick += (_, _) => { if (showSignal.WaitOne(0)) { Show(); WindowState = FormWindowState.Normal; Activate(); } };
+        var menu = new ContextMenuStrip(); menu.Items.Add("打开学生端", null, (_, _) => ShowWindow());
+        if (managed) menu.Items.Add("退出（需要密码）", null, async (_, _) => await MaintenanceExit());
+        else menu.Items.Add("退出", null, (_, _) => Close());
+        tray.ContextMenuStrip = menu;
+        tray.DoubleClick += (_, _) => ShowWindow();
+        Resize += (_, _) => { if (WindowState == FormWindowState.Minimized) HideToTray(); };
+        showTimer.Tick += (_, _) => { if (showSignal.WaitOne(0)) ShowWindow(); };
         showTimer.Start();
         connect.Click += async (_, _) => await Enroll();
         reset.Click += async (_, _) =>
@@ -81,7 +84,37 @@ public sealed class MainForm : Form
         FormClosing += OnClosing;
         RefreshDevices();
         connect.Enabled = false;
-        Shown += async (_, _) => await Initialize();
+        Shown += async (_, _) => await InitializeOnce();
+    }
+
+    internal void HideToTray()
+    {
+        Hide();
+        ShowInTaskbar = false;
+        tray.Visible = true;
+    }
+
+    internal void ShowWindow()
+    {
+        ShowInTaskbar = true;
+        WindowState = FormWindowState.Normal;
+        Show();
+        Activate();
+    }
+
+    internal void StartInTray()
+    {
+        HideToTray();
+        _ = Handle;
+        // Run initialization on the message loop even though no form is shown.
+        BeginInvoke(async () => await InitializeOnce());
+    }
+
+    private async Task InitializeOnce()
+    {
+        if (initialized || closing) return;
+        initialized = true;
+        await Initialize();
     }
 
     private async Task Initialize()
@@ -219,7 +252,7 @@ public sealed class MainForm : Form
     }
     private async Task MaintenanceExit()
     {
-        using var dialog = new Form { Text = "管理员退出", ClientSize = new Size(390, 155), StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false };
+        using var dialog = new Form { Text = "退出学生端", ClientSize = new Size(390, 155), StartPosition = Visible ? FormStartPosition.CenterParent : FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false };
         var label = new Label { Text = "维护密码", AutoSize = true, Location = new Point(16, 15) };
         var password = new TextBox { UseSystemPasswordChar = true, MaxLength = 256, Location = new Point(16, 48), Width = 355 };
         var confirm = new Button { Text = "验证并退出", DialogResult = DialogResult.OK, Location = new Point(245, 98), Width = 125 };
@@ -228,11 +261,16 @@ public sealed class MainForm : Form
         try
         {
             Enabled = false;
-            if (!await AgentSupervisor.RequestMaintenance(password.Text)) { detail.Text = "维护密码不正确，无法退出。"; return; }
+            if (!await AgentSupervisor.RequestMaintenance(password.Text))
+            {
+                MessageBox.Show("维护密码不正确，无法退出。", "退出学生端", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
             maintenanceExit = true;
             Close();
         }
-        catch (Exception e) when (e is IOException or OperationCanceledException) { detail.Text = "维护验证未完成，请确认教师机在线：" + e.Message; }
+        catch (Exception e) when (e is IOException or OperationCanceledException)
+        { MessageBox.Show("暂时无法验证，请确认教师机在线后重试。", "退出学生端", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         finally { password.Clear(); if (!closing) Enabled = true; }
     }
     private async void OnClosing(object? sender, FormClosingEventArgs e)
@@ -241,7 +279,7 @@ public sealed class MainForm : Form
         if (managed && !maintenanceExit && e.CloseReason == CloseReason.UserClosing)
         {
             e.Cancel = true;
-            WindowState = FormWindowState.Minimized;
+            HideToTray();
             return;
         }
         e.Cancel = true; closing = true; Enabled = false;

@@ -56,7 +56,7 @@ public sealed class ManagedModeTests
     }
 
     [Fact]
-    public void StudentCloseMinimizesInsteadOfExitingAndTrayIsHidden()
+    public void StudentCloseHidesToTrayWithoutTaskbarEntry()
     {
         Exception? error = null;
         var thread = new Thread(() =>
@@ -67,13 +67,75 @@ public sealed class ManagedModeTests
                 var args = new FormClosingEventArgs(CloseReason.UserClosing, false);
                 typeof(MainForm).GetMethod("OnClosing", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)!.Invoke(form, [form, args]);
                 Assert.True(args.Cancel);
-                Assert.Equal(FormWindowState.Minimized, form.WindowState);
+                Assert.False(form.Visible);
+                Assert.False(form.ShowInTaskbar);
                 var tray = (NotifyIcon)typeof(MainForm).GetField("tray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(form)!;
-                Assert.False(tray.Visible);
+                Assert.True(tray.Visible);
+                Assert.Contains(tray.ContextMenuStrip!.Items.Cast<ToolStripItem>(), item => item.Text == "退出（需要密码）");
             }
             catch (Exception e) { error = e; }
         });
         thread.SetApartmentState(ApartmentState.STA); thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
+        if (error is not null) throw error;
+    }
+
+    [Fact]
+    public void ManagedStartupCreatesAHiddenWindowWithOnlyATrayIcon()
+    {
+        RunOnUiThread(() =>
+        {
+            using var form = new MainForm(managed: true);
+            form.StartInTray();
+            Assert.True(form.IsHandleCreated);
+            Assert.False(form.Visible);
+            Assert.False(form.ShowInTaskbar);
+            var tray = (NotifyIcon)typeof(MainForm).GetField("tray", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(form)!;
+            Assert.True(tray.Visible);
+        });
+    }
+
+    [Fact]
+    public void TrayWindowCanBeOpenedAndHiddenAgain()
+    {
+        RunOnUiThread(() =>
+        {
+            using var form = new MainForm(managed: true);
+            // Keep this window lifecycle test separate from device enrollment.
+            typeof(MainForm).GetField("initialized", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(form, true);
+            form.ShowWindow();
+            Assert.True(form.Visible);
+            Assert.True(form.ShowInTaskbar);
+            form.WindowState = FormWindowState.Minimized;
+            Assert.False(form.Visible);
+            Assert.False(form.ShowInTaskbar);
+        });
+    }
+
+    [Fact]
+    public async Task AuthorizedCancellationStopsAnActiveChildWithoutRestart()
+    {
+        using var stop = new CancellationTokenSource();
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var starts = 0;
+        var task = AgentSupervisor.RestartLoop(async ct =>
+        {
+            starts++;
+            ready.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+        }, stop.Token);
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await stop.CancelAsync();
+        await task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, starts);
+    }
+
+    private static void RunOnUiThread(Action action)
+    {
+        Exception? error = null;
+        var thread = new Thread(() => { try { action(); } catch (Exception e) { error = e; } });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
         if (error is not null) throw error;
     }
