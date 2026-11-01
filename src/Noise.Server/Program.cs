@@ -29,6 +29,12 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     o.ExpireTimeSpan = TimeSpan.FromHours(8);
     o.Events.OnRedirectToLogin = ctx => { ctx.Response.StatusCode = 401; return Task.CompletedTask; };
     o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = 403; return Task.CompletedTask; };
+    o.Events.OnValidatePrincipal = ctx =>
+    {
+        if (ctx.Principal?.FindFirst("credential_version")?.Value != ctx.HttpContext.RequestServices.GetRequiredService<TeacherAccess>().CredentialVersion)
+            ctx.RejectPrincipal();
+        return Task.CompletedTask;
+    };
 });
 builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(o =>
@@ -56,6 +62,9 @@ builder.Services.AddSingleton<TeacherAccess>(services =>
     return new TeacherAccess(directory, config["TeacherPassword"]);
 });
 builder.Services.AddHostedService<RoomTicker>();
+builder.Services.AddSingleton(services => new StudentPackageBuilder(
+    services.GetRequiredService<IWebHostEnvironment>().ContentRootPath,
+    services.GetRequiredService<IConfiguration>()["ClassroomServerUrl"]));
 var app = builder.Build();
 _ = app.Services.GetRequiredService<TeacherAccess>();
 
@@ -101,9 +110,10 @@ app.UseStaticFiles();
 app.MapGet("/api/health", () => new { status = "ok", version = typeof(RoomStore).Assembly.GetName().Version!.ToString(3) });
 app.MapPost("/api/login", async (LoginRequest request, TeacherAccess access, HttpContext ctx) =>
 {
-    if (string.IsNullOrEmpty(request.Password) || !access.Verify(request.Password)) return Results.Json(new { error = "密码不正确。" }, statusCode: 401);
+    var credentialVersion = string.IsNullOrEmpty(request.Password) ? null : access.VerifyAndGetVersion(request.Password);
+    if (credentialVersion is null) return Results.Json(new { error = "密码不正确。" }, statusCode: 401);
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
-        new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "teacher")], CookieAuthenticationDefaults.AuthenticationScheme)));
+        new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "teacher"), new Claim("credential_version", credentialVersion)], CookieAuthenticationDefaults.AuthenticationScheme)));
     return Results.Ok(new { ok = true });
 }).RequireRateLimiting("auth");
 
@@ -126,6 +136,23 @@ app.MapPost("/api/device/calibration", (CalibrationReport request, HttpContext c
 });
 
 var teacher = app.MapGroup("/api/teacher").RequireAuthorization();
+teacher.MapGet("/maintenance", (HttpContext ctx, TeacherAccess access) =>
+    LocalTeacherAccess.IsLocal(ctx) ? Results.Ok(new { configured = access.Configured }) : Results.StatusCode(403));
+teacher.MapPut("/maintenance", (MaintenancePasswordRequest request, HttpContext ctx, TeacherAccess access) =>
+{
+    if (!LocalTeacherAccess.IsLocal(ctx)) return Results.StatusCode(403);
+    access.SetPassword(request.Password, request.Confirmation);
+    return Results.Ok();
+}).RequireRateLimiting("auth");
+teacher.MapPost("/student-package", (MaintenancePasswordRequest request, HttpContext ctx, TeacherAccess access, StudentPackageBuilder packages) =>
+{
+    if (!LocalTeacherAccess.IsLocal(ctx)) return Results.StatusCode(403);
+    var changingPassword = request.Password is not null || request.Confirmation is not null;
+    if (!access.Configured || changingPassword) TeacherAccess.ValidatePassword(request.Password, request.Confirmation);
+    var package = packages.Build();
+    if (!access.Configured || changingPassword) access.SetPassword(request.Password, request.Confirmation);
+    return Results.File(package, "application/zip", "学生端安装包.zip");
+}).RequireRateLimiting("auth");
 teacher.MapGet("/dashboard", (RoomStore store) => store.Snapshot());
 teacher.MapPut("/layout", (LayoutRequest request, RoomStore store) => { store.SaveLayout(request); return store.Snapshot(); });
 teacher.MapGet("/connection", (IConfiguration configuration) => new { server = configuration["ClassroomServerUrl"] });
@@ -222,6 +249,7 @@ static async Task ObserveClose(WebSocket socket, CancellationToken cancellationT
 }
 
 public sealed record LoginRequest(string Password);
+public sealed record MaintenancePasswordRequest(string? Password = null, string? Confirmation = null);
 public sealed class RoomTicker(RoomStore store, ILogger<RoomTicker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

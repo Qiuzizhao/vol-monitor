@@ -4,7 +4,6 @@ $ErrorActionPreference = 'Stop'
 trap { Write-StartupError $_; exit 1 }
 Set-Location $PSScriptRoot
 $browserJob = $null
-$staging = $null
 $instance = $null
 $startupExitCode = 1
 try {
@@ -84,17 +83,7 @@ try {
     New-Item -Path $startupKey -Force | Out-Null
     $startupCommand = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $PSScriptRoot 'launch-ui.ps1') + '" -Target teacher -AtLogin'
     New-ItemProperty -Path $startupKey -Name RoomScopeTeacher -Value $startupCommand -PropertyType String -Force | Out-Null
-    $template = Join-Path $PSScriptRoot 'student-template.zip'
-    if (-not (Test-Path $template)) { throw '缺少 student-template.zip，请重新完整解压教师端运行包。' }
-    $staging = Join-Path ([IO.Path]::GetTempPath()) ('RoomScope-' + [guid]::NewGuid().ToString('N'))
-    Expand-Archive -LiteralPath $template -DestinationPath $staging
-    @{ Server = $url; AutoEnroll = $true; ManagedMode = $true; EnableLoginStartup = $true } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $staging '程序/agent-deployment.json')
-    Copy-Item -LiteralPath $certPath -Destination (Join-Path $staging '程序')
-    $studentZip = Join-Path (Split-Path $PSScriptRoot -Parent) '学生端安装包.zip'
-    Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $studentZip -Force
-    Write-Host "课堂专用学生包已生成：$studentZip" -ForegroundColor Green
-    Write-Host '学生机解压后，双击“启动学生端.cmd”。'
-    Write-Host '教师页面点“学生机”，核对座位后确认接入。'
+    Write-Host '教师页面点「学生机」→「生成学生端」，设置维护密码并下载安装包。'
     # The local dashboard needs no password; student connections still use HTTPS.
     if (-not $AtLogin -and -not $FromLauncher) { $browserJob = Start-Job -ArgumentList 'http://127.0.0.1:5080',$PSScriptRoot -ScriptBlock {
         param($url, $directory)
@@ -116,9 +105,4 @@ try {
 finally {
     if ($instance) { $instance.Dispose() }
     if ($browserJob) { Stop-Job $browserJob; Remove-Job $browserJob }
-    if ($staging -and (Test-Path $staging)) {
-        $resolved = [IO.Path]::GetFullPath($staging)
-        $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
-        if ($resolved.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -and (Split-Path $resolved -Leaf) -like 'RoomScope-*') { Remove-Item -LiteralPath $resolved -Recurse -Force }
-    }
 }

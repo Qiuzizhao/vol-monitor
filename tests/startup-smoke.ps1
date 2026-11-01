@@ -1,4 +1,4 @@
-﻿# Exercise real ZIP generation with simulated Windows networking/certificate UI.
+﻿# Exercise teacher startup with simulated Windows networking/certificate UI.
 # This test never installs a certificate, changes firewall rules, or starts a service.
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -54,14 +54,9 @@ try {
     & (Join-Path $teacherDirectory 'start-teacher.ps1')
     if (-not $global:teacherStarted) { throw 'Teacher service was not started.' }
     if (-not $global:teacherStartupRegistered) { throw 'Teacher login startup was not registered.' }
-    $output = Join-Path $fixture 'output'
-    Expand-Archive -LiteralPath (Join-Path (Split-Path $teacherDirectory -Parent) '学生端安装包.zip') -DestinationPath $output
-    $profile = Get-Content (Join-Path $output '程序/agent-deployment.json') -Raw | ConvertFrom-Json
-    if ($profile.Server -ne 'https://192.168.10.20:5081' -or -not $profile.AutoEnroll) { throw 'Wrong student classroom profile.' }
-    if (-not $profile.ManagedMode -or -not $profile.EnableLoginStartup) { throw 'Managed startup is not enabled in the classroom package.' }
-    $files = @(Get-ChildItem $output -Recurse -File | ForEach-Object { $_.Name })
-    if ($files.Count -ne 7 -or 'roomscope-teacher.cer' -notin $files -or '启动学生端.cmd' -notin $files -or 'start-student.ps1' -notin $files -or 'console.ps1' -notin $files -or 'launch-ui.ps1' -notin $files) { throw 'Unexpected student package contents.' }
-    Write-Host 'PASS: existing network reused, student ZIP generated, public certificate included, teacher secrets excluded, teacher started.'
+    if (Test-Path (Join-Path (Split-Path $teacherDirectory -Parent) '学生端安装包.zip')) { throw '启动时不应绕过页面设置密码自动生成学生端。' }
+    if (-not (Test-Path (Join-Path $teacherDirectory 'student-template.zip'))) { throw '学生端模板丢失。' }
+    Write-Host '通过：沿用机房网络，登记登录自启，启动教师服务；学生端由教师页面设置密码后生成。'
 } finally {
     Set-Location $previous
     $resolved = [IO.Path]::GetFullPath($fixture)

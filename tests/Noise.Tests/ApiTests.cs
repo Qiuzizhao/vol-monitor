@@ -12,7 +12,7 @@ using Xunit;
 
 namespace Noise.Tests;
 
-public sealed class AppFactory(IPAddress? peer = null) : WebApplicationFactory<Program>
+public sealed class AppFactory(IPAddress? peer = null, bool packageFixture = false) : WebApplicationFactory<Program>
 {
     public string DataPath { get; } = Path.Combine(Path.GetTempPath(), "roomscope-api-" + Guid.NewGuid());
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -22,6 +22,16 @@ public sealed class AppFactory(IPAddress? peer = null) : WebApplicationFactory<P
         .UseSetting("ClassroomServerUrl", "https://192.168.1.10:5081")
         .UseSetting("Logging:LogLevel:Default", "Error");
         if (peer is not null) builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new PeerFilter(peer)));
+        if (packageFixture) builder.ConfigureServices(services =>
+        {
+            var root = Path.Combine(DataPath, "package-source"); Directory.CreateDirectory(root);
+            using (var zip = System.IO.Compression.ZipFile.Open(Path.Combine(root, "student-template.zip"), System.IO.Compression.ZipArchiveMode.Create))
+                foreach (var name in new[] { "启动学生端.cmd", "使用说明.txt", "程序/Noise.Agent.exe" })
+                { using var writer = new StreamWriter(zip.CreateEntry(name).Open()); writer.Write("学生端程序样例"); }
+            File.WriteAllText(Path.Combine(root, "roomscope-teacher.cer"), "public certificate fixture");
+            File.WriteAllText(Path.Combine(root, "teacher.pfx"), "PRIVATE KEY MUST NOT BE INCLUDED");
+            services.AddSingleton(new StudentPackageBuilder(root, "https://192.168.1.10:5081"));
+        });
     }
     private sealed class PeerFilter(IPAddress address) : IStartupFilter
     {

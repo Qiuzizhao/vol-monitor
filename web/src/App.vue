@@ -4,6 +4,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { Dashboard, Device } from './types';
 import DeviceEnrollment from './DeviceEnrollment.vue';
 import SeatLayout from './SeatLayout.vue';
+import StudentSetup from './StudentSetup.vue';
 const data=ref<Dashboard|null>(null),page=ref('live'),busy=ref(false),connected=ref(false),notice=ref('');
 const loading=ref(true),password=ref(''),loginError=ref('');
 const local=['127.0.0.1','localhost','[::1]'].includes(location.hostname);
@@ -12,6 +13,7 @@ const online=computed(()=>data.value?.devices.filter(d=>d.status!=='offline').le
 const rows=computed(()=>Array.from({length:data.value?.layoutRows??6},(_,i)=>i+1));
 const columns=computed(()=>data.value?.layoutColumns??6);
 const editingLayout=ref(false);
+const studentSetup=ref<'package'|'password'|null>(null);
 const seatMap=computed(()=>new Map(data.value?.seats.map(s=>[`${s.row}:${s.column}`,s])));
 const seatAt=(row:number,col:number)=>seatMap.value.get(`${row}:${col}`);
 const calibrating=computed(()=>data.value?.devices.some(d=>d.status==='calibrating')??false);
@@ -54,9 +56,10 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
     <section class="toolbar"><strong>{{calibrating?'校准中':'监测中'}}</strong><div class="actions"><button class="button" @click="editingLayout=true">布局</button><button class="button" @click="calibrate" :disabled="busy||!connected||calibrating">校准</button></div></section>
     <div class="monitor-grid"><section class="panel seat-panel"><div class="classroom"><div class="teacher-desk">讲台</div><div class="seat-rows"><div v-for="row in rows" :key="row" class="seat-row" :style="{'--columns':columns}"><template v-for="col in columns" :key="col"><div v-if="seatAt(row,col)" class="seat" :class="tone(seatAt(row,col)!.score)" :aria-label="`座位 ${seatAt(row,col)!.label}，${statuses[seatAt(row,col)!.status]}，音量 ${score(seatAt(row,col)!.score)}`" :title="seatAt(row,col)!.deviceName??statuses[seatAt(row,col)!.status]"><span>{{seatAt(row,col)!.label}}</span><strong>{{score(seatAt(row,col)!.score)}}</strong><small v-if="seatAt(row,col)!.score===null">{{statuses[seatAt(row,col)!.status]}}</small></div><div v-else class="aisle-cell" aria-hidden="true"></div></template></div></div></div></section></div>
    </template>
-   <template v-else><DeviceEnrollment :api="api" :seats="data.seats" :devices="data.devices" @notice="toast"/><section v-if="data.devices.length" class="panel"><div class="table-scroll"><table><thead><tr><th>IP</th><th>座位</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="device in data.devices" :key="device.id"><td>{{device.name}}</td><td><select :value="device.seatId??''" :aria-label="`${device.name} 的座位`" @change="bind(device,$event)" :disabled="busy"><option value="" disabled>选择座位</option><option v-for="seat in data.seats" :key="seat.id" :value="seat.id" :disabled="data.devices.some(d=>d.id!==device.id&&d.seatId===seat.id)">{{seat.label}} 号</option></select></td><td><span class="device-status" :class="{offline:device.status==='offline'}">{{statuses[device.status]??device.status}}</span></td><td><button class="text-button danger" @click="remove(device)" :disabled="busy">移除</button></td></tr></tbody></table></div></section></template>
+   <template v-else><section v-if="local" class="toolbar"><div class="actions"><button class="button primary" @click="studentSetup='package'">生成学生端</button><button class="button" @click="studentSetup='password'">维护密码</button></div></section><DeviceEnrollment :api="api" :seats="data.seats" :devices="data.devices" @notice="toast"/><section v-if="data.devices.length" class="panel"><div class="table-scroll"><table><thead><tr><th>IP</th><th>座位</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="device in data.devices" :key="device.id"><td>{{device.name}}</td><td><select :value="device.seatId??''" :aria-label="`${device.name} 的座位`" @change="bind(device,$event)" :disabled="busy"><option value="" disabled>选择座位</option><option v-for="seat in data.seats" :key="seat.id" :value="seat.id" :disabled="data.devices.some(d=>d.id!==device.id&&d.seatId===seat.id)">{{seat.label}} 号</option></select></td><td><span class="device-status" :class="{offline:device.status==='offline'}">{{statuses[device.status]??device.status}}</span></td><td><button class="text-button danger" @click="remove(device)" :disabled="busy">移除</button></td></tr></tbody></table></div></section></template>
   </main>
  </template>
  <SeatLayout v-if="editingLayout&&data" :seats="data.seats" :rows="data.layoutRows" :columns="data.layoutColumns" :busy="busy" @close="editingLayout=false" @save="saveLayout"/>
+ <StudentSetup v-if="studentSetup" :mode="studentSetup" :api="api" @close="studentSetup=null" @notice="toast"/>
  <div v-if="notice" class="toast" role="status">{{notice}}<button aria-label="关闭提示" @click="notice=''">关闭</button></div>
 </template>
