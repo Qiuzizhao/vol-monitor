@@ -79,7 +79,7 @@ public sealed partial class RoomStore
                 SELECT r.id,r.name,r.fingerprint,r.created_at,r.last_seen,d.id,d.seat_id
                 FROM enrollment_requests r LEFT JOIN device_hardware h ON h.fingerprint=r.fingerprint
                 LEFT JOIN devices d ON d.id=h.device_id
-                WHERE r.status='pending' AND r.expires_at>$now ORDER BY r.created_at
+                WHERE r.status='pending' AND r.expires_at>$now ORDER BY r.created_at,r.rowid
                 """, ("$now", Now.ToString("O"))))
             using (var reader = cmd.ExecuteReader())
                 while (reader.Read())
@@ -90,7 +90,23 @@ public sealed partial class RoomStore
                     requests.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2), DateTimeOffset.Parse(reader.GetString(3)),
                         DateTimeOffset.Parse(reader.GetString(4)), suggested, reader.IsDBNull(5) ? null : reader.GetString(5), false));
                 }
-            return new(Window(), requests.Select(r => r with { DuplicateHardware = requests.Count(x => x.HardwareFingerprint == r.HardwareFingerprint) > 1 }).ToArray());
+            var planned = new HashSet<string>();
+            var suggestions = new Dictionary<string, string?>();
+            // Existing hardware keeps its position; explicit machine numbers come
+            // next. Other computers get unused seats, without granting access.
+            foreach (var request in requests.OrderBy(r => r.ExistingDeviceId is not null ? 0 : r.SuggestedSeatId is not null ? 1 : 2))
+            {
+                bool Available(Seat seat) => !planned.Contains(seat.Id) &&
+                    !devices.Values.Any(d => !d.Demo && d.SeatId == seat.Id && d.Id != request.ExistingDeviceId);
+                var seat = Seats.FirstOrDefault(s => s.Id == request.SuggestedSeatId && Available(s)) ?? Seats.FirstOrDefault(Available);
+                suggestions[request.Id] = seat?.Id;
+                if (seat is not null) planned.Add(seat.Id);
+            }
+            return new(Window(), requests.Select(r => r with
+            {
+                SuggestedSeatId = suggestions[r.Id],
+                DuplicateHardware = requests.Count(x => x.HardwareFingerprint == r.HardwareFingerprint) > 1
+            }).ToArray());
         }
     }
 

@@ -94,7 +94,7 @@ try {
     Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $studentZip -Force
     Write-Host "课堂专用学生包已生成：$studentZip" -ForegroundColor Green
     Write-Host '学生机解压后，双击“启动学生端.cmd”。'
-    Write-Host '教师页面点“学生机”→“开启接入”，核对座位并批准。'
+    Write-Host '教师页面点“学生机”，核对座位后确认接入。'
     # The local dashboard needs no password; student connections still use HTTPS.
     if (-not $AtLogin -and -not $FromLauncher) { $browserJob = Start-Job -ArgumentList 'http://127.0.0.1:5080',$PSScriptRoot -ScriptBlock {
         param($url, $directory)

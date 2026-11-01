@@ -92,6 +92,47 @@ public sealed class EnrollmentTests : IDisposable
     }
 
     [Fact]
+    public void UnnumberedComputersReceiveDistinctFreeSeatsAfterNumberedComputers()
+    {
+        store.SetEnrollmentWindow(true);
+        Request("DESKTOP-A", Hardware("001122334401"));
+        Request("DESKTOP-B", Hardware("001122334402"));
+        Request("PC01", Hardware("001122334403"));
+        var pending = store.EnrollmentRequests().Requests;
+        Assert.Equal("seat-01", pending.Single(r => r.Name == "PC01").SuggestedSeatId);
+        Assert.Equal("seat-02", pending.Single(r => r.Name == "DESKTOP-A").SuggestedSeatId);
+        Assert.Equal("seat-03", pending.Single(r => r.Name == "DESKTOP-B").SuggestedSeatId);
+        Assert.Empty(store.Snapshot().Devices);
+    }
+
+    [Fact]
+    public void ReinstallKeepsItsSeatAndSuggestionsDoNotDisplaceExistingDevices()
+    {
+        store.SetEnrollmentWindow(true);
+        var (original, key) = Request();
+        Approve(original, key, "seat-17");
+        Request("DESKTOP-REINSTALLED");
+        Request("PC17", Hardware("001122334466"));
+        var pending = store.EnrollmentRequests().Requests;
+        Assert.Equal("seat-17", pending.Single(r => r.Name == "DESKTOP-REINSTALLED").SuggestedSeatId);
+        Assert.Equal("seat-01", pending.Single(r => r.Name == "PC17").SuggestedSeatId);
+        Assert.Single(store.Snapshot().Devices);
+        Assert.Equal("seat-17", store.Snapshot().Devices[0].SeatId);
+    }
+
+    [Fact]
+    public void SuggestedSeatsStayUniqueAndRemainEmptyWhenRoomIsFull()
+    {
+        store.SetEnrollmentWindow(true);
+        for (var i = 0; i <= store.Seats.Length; i++)
+            Request("DESKTOP-" + i, Secret());
+        var pending = store.EnrollmentRequests().Requests;
+        Assert.Equal(store.Seats.Length, pending.Count(r => r.SuggestedSeatId is not null));
+        Assert.Equal(store.Seats.Length, pending.Select(r => r.SuggestedSeatId).Where(s => s is not null).Distinct().Count());
+        Assert.Null(pending[^1].SuggestedSeatId);
+    }
+
+    [Fact]
     public void ReimagingPreservesSeatSuggestionButNeedsApprovalAndRevokesOldToken()
     {
         store.SetEnrollmentWindow(true);

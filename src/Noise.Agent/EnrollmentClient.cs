@@ -27,7 +27,7 @@ public static class EnrollmentClient
                     if (window?.Open != true)
                     {
                         update("等待教师允许接入", "待机");
-                        await Task.Delay(15000, ct); continue;
+                        await Task.Delay(3000, ct); continue;
                     }
                     using var response = await http.PostAsJsonAsync("api/device-requests", new EnrollmentRequest(Environment.MachineName, fingerprint), ct);
                     response.EnsureSuccessStatusCode();
@@ -40,7 +40,7 @@ public static class EnrollmentClient
                     {
                         PendingIdentity.Clear(); identity = PendingIdentity.LoadOrCreate(uri.ToString(), fingerprint);
                         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Enrollment", identity.Claim());
-                        await Task.Delay(15000, ct); continue;
+                        await Task.Delay(3000, ct); continue;
                     }
                     response.EnsureSuccessStatusCode();
                     result = await response.Content.ReadFromJsonAsync<EnrollmentState>(ct);
@@ -58,10 +58,10 @@ public static class EnrollmentClient
                 {
                     PendingIdentity.Clear(); identity = PendingIdentity.LoadOrCreate(uri.ToString(), fingerprint);
                     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Enrollment", identity.Claim());
-                    await Task.Delay(15000, ct); continue;
+                    await Task.Delay(3000, ct); continue;
                 }
                 update("等待教师批准", $"本机：{Environment.MachineName}");
-                await Task.Delay(5000, ct);
+                await Task.Delay(2000, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
