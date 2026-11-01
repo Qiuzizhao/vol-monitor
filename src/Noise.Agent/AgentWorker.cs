@@ -19,7 +19,7 @@ public sealed class AgentWorker : IAsyncDisposable
     public event Action? AuthorizationLost;
 
     public AgentWorker(AgentConfig config) : this(config,
-        new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+        new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
         { BaseAddress = AgentConfig.ValidateServer(config.Server), Timeout = TimeSpan.FromSeconds(5) }, new AudioCapture())
     {
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.ReadToken());

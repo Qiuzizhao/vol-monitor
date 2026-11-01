@@ -11,7 +11,7 @@ public static class EnrollmentClient
     {
         var uri = AgentConfig.ValidateServer(profile.Server);
         var identity = PendingIdentity.LoadOrCreate(uri.ToString(), fingerprint);
-        using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+        using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
         { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(8) };
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Enrollment", identity.Claim());
         await Task.Delay(Random.Shared.Next(200, 2200), ct);

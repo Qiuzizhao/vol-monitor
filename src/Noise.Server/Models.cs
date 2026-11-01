@@ -8,6 +8,7 @@ public sealed class Device
 {
     public required string Id { get; init; }
     public required string Name { get; init; }
+    public string? IpAddress { get; set; }
     public string? SeatId { get; set; }
     public bool Demo { get; init; }
     public string? MicrophoneId { get; set; }
@@ -37,4 +38,4 @@ public sealed record Annotation(string Id, string SessionId, DateTimeOffset Time
 public sealed record Dashboard(string RoomName, DateTimeOffset ServerTime, string AlgorithmVersion,
     ResearchSession? Session, string? CalibrationId, DateTimeOffset? CalibrationUntil,
     SeatView[] Seats, ZoneView[] Zones, DeviceView[] Devices, TrendPoint[] Trend,
-    Annotation[] Annotations);
+    Annotation[] Annotations, int LayoutRows = 6, int LayoutColumns = 6);

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed,onMounted,onUnmounted,ref } from 'vue';
 import type { Device,Seat } from './types';
-interface Pending{id:string;name:string;suggestedSeatId:string|null;existingDeviceId:string|null;hardwareFingerprint:string;duplicateHardware:boolean}
+interface Pending{id:string;name:string;suggestedSeatId:string|null;existingDeviceId:string|null;hardwareFingerprint:string;duplicateHardware:boolean;ipAddress?:string|null}
 const props=defineProps<{api:(path:string,method?:string,body?:unknown)=>Promise<any>;seats:Seat[];devices:Device[]}>();
 const emit=defineEmits<{notice:[message:string]}>();
 const overview=ref<{window:{open:boolean};requests:Pending[]}>({window:{open:false},requests:[]});
@@ -38,6 +38,6 @@ onUnmounted(()=>clearInterval(poll));
 </script>
 <template>
  <section class="panel enrollment-panel"><div class="panel-heading"><h2>新设备</h2><button class="button" :class="overview.window.open?'':'primary'" @click="toggle" :disabled="busy">{{overview.window.open?'关闭接入':'开启接入'}}</button></div>
- <template v-if="overview.requests.length"><div class="table-scroll"><table><thead><tr><th><input type="checkbox" aria-label="全选" :checked="selected.length===Math.min(overview.requests.length,64)" @change="selected=selected.length===Math.min(overview.requests.length,64)?[]:overview.requests.slice(0,64).map(r=>r.id)"/></th><th>学生机</th><th>座位</th></tr></thead><tbody><tr v-for="r in overview.requests" :key="r.id"><td><input type="checkbox" v-model="selected" :value="r.id" :aria-label="`选择 ${r.name}`"/></td><td>{{r.name}}<small v-if="r.existingDeviceId" class="reinstall">重新接入</small></td><td><select v-model="mapping[r.id]" @change="edited.add(r.id)" :aria-label="`${r.name} 的座位`"><option value="">选择座位</option><option v-for="s in seats" :key="s.id" :value="s.id" :disabled="occupied(s.id,r)">{{s.label}} 号</option></select></td></tr></tbody></table></div><div class="approval"><span>{{conflict||`已选 ${selected.length} 台`}}</span><button class="button primary" @click="approve" :disabled="busy||!requests.length||!!conflict||requests.length>64">确认接入</button></div></template>
+ <template v-if="overview.requests.length"><div class="table-scroll"><table><thead><tr><th><input type="checkbox" aria-label="全选" :checked="selected.length===Math.min(overview.requests.length,64)" @change="selected=selected.length===Math.min(overview.requests.length,64)?[]:overview.requests.slice(0,64).map(r=>r.id)"/></th><th>IP</th><th>座位</th></tr></thead><tbody><tr v-for="r in overview.requests" :key="r.id"><td><input type="checkbox" v-model="selected" :value="r.id" :aria-label="`选择 ${r.ipAddress??'未连接'}`"/></td><td>{{r.ipAddress??'未连接'}}<small v-if="r.existingDeviceId" class="reinstall">重新接入</small></td><td><select v-model="mapping[r.id]" @change="edited.add(r.id)" :aria-label="`${r.ipAddress??'未连接'} 的座位`"><option value="">选择座位</option><option v-for="s in seats" :key="s.id" :value="s.id" :disabled="occupied(s.id,r)">{{s.label}} 号</option></select></td></tr></tbody></table></div><div class="approval"><span>{{conflict||`已选 ${selected.length} 台`}}</span><button class="button primary" @click="approve" :disabled="busy||!requests.length||!!conflict||requests.length>64">确认接入</button></div></template>
  <div v-else class="empty"><span>{{overview.window.open?'等待连接':'暂无设备'}}</span></div></section>
 </template>

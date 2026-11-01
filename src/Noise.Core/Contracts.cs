@@ -16,3 +16,4 @@ public record EnrollmentState(string Status, string? RequestId, string? DeviceId
 public record EnrollmentWindow(bool Open, DateTimeOffset? ClosesAt);
 public record EnrollmentApproval(string RequestId, string SeatId);
 public record EnrollmentBatch(EnrollmentApproval[] Items);
+public record LayoutRequest(string?[][] Cells);

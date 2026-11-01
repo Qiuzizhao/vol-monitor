@@ -65,6 +65,9 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["Referrer-Policy"] = "same-origin";
     ctx.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
     ctx.Response.Headers["Permissions-Policy"] = "camera=(), microphone=()";
+    if (ctx.Request.Method == "PUT" && ctx.Request.Path == "/api/teacher/layout" &&
+        ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } bodyLimit)
+        bodyLimit.MaxRequestBodySize = 131072;
     if (ctx.Request.Path.StartsWithSegments("/api") || ctx.Request.Path.StartsWithSegments("/ws"))
     {
         ctx.Response.Headers.CacheControl = "no-store";
@@ -106,13 +109,13 @@ app.MapPost("/api/login", async (LoginRequest request, TeacherAccess access, Htt
 
 app.MapGet("/api/enrollment", (RoomStore store) => store.EnrollmentStatus()).RequireRateLimiting("enrollment");
 app.MapPost("/api/device-requests", (EnrollmentRequest request, HttpContext ctx, RoomStore store) =>
-    store.RequestEnrollment(request, EnrollmentClaim(ctx))).RequireRateLimiting("enrollment");
+    store.RequestEnrollment(request, EnrollmentClaim(ctx), PeerAddress(ctx))).RequireRateLimiting("enrollment");
 app.MapGet("/api/device-requests/{id}", (string id, HttpContext ctx, RoomStore store) =>
-    store.PollEnrollment(id, EnrollmentClaim(ctx))).RequireRateLimiting("enrollment");
+    store.PollEnrollment(id, EnrollmentClaim(ctx), PeerAddress(ctx))).RequireRateLimiting("enrollment");
 app.MapPost("/api/telemetry", (DeviceReport request, HttpContext ctx, RoomStore store) =>
 {
     var id = DeviceIdentity(ctx, store);
-    return id is null ? Results.Unauthorized() : Results.Ok(store.Report(id, request));
+    return id is null ? Results.Unauthorized() : Results.Ok(store.Report(id, request, PeerAddress(ctx)));
 });
 app.MapPost("/api/device/calibration", (CalibrationReport request, HttpContext ctx, RoomStore store) =>
 {
@@ -124,6 +127,7 @@ app.MapPost("/api/device/calibration", (CalibrationReport request, HttpContext c
 
 var teacher = app.MapGroup("/api/teacher").RequireAuthorization();
 teacher.MapGet("/dashboard", (RoomStore store) => store.Snapshot());
+teacher.MapPut("/layout", (LayoutRequest request, RoomStore store) => { store.SaveLayout(request); return store.Snapshot(); });
 teacher.MapGet("/connection", (IConfiguration configuration) => new { server = configuration["ClassroomServerUrl"] });
 teacher.MapPost("/logout", async (HttpContext ctx) => { await ctx.SignOutAsync(); return Results.Ok(); });
 teacher.MapGet("/enrollment", (RoomStore store) => store.EnrollmentRequests());
@@ -200,6 +204,11 @@ static string EnrollmentClaim(HttpContext ctx)
 {
     var header = ctx.Request.Headers.Authorization.ToString();
     return header.StartsWith("Enrollment ", StringComparison.Ordinal) ? header[11..] : "";
+}
+static string? PeerAddress(HttpContext ctx)
+{
+    var address = ctx.Connection.RemoteIpAddress;
+    return (address?.IsIPv4MappedToIPv6 == true ? address.MapToIPv4() : address)?.ToString();
 }
 static async Task ObserveClose(WebSocket socket, CancellationToken cancellationToken)
 {

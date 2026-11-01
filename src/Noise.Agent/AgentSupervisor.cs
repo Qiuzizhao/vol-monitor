@@ -86,7 +86,7 @@ internal static class AgentSupervisor
     internal static async Task<bool> VerifyTeacher(string server, string password, HttpMessageHandler? handler = null)
     {
         if (password.Length is 0 or > 256) return false;
-        using var http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
+        using var http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false })
         { BaseAddress = AgentConfig.ValidateServer(server), Timeout = TimeSpan.FromSeconds(8) };
         http.DefaultRequestHeaders.Add("X-RoomScope", "1");
         using var response = await http.PostAsJsonAsync("api/login", new { Password = password });

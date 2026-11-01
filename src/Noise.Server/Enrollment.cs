@@ -3,7 +3,7 @@ using Noise.Core;
 namespace Noise.Server;
 
 public sealed record PendingDevice(string Id, string Name, string HardwareFingerprint, DateTimeOffset CreatedAt,
-    DateTimeOffset LastSeen, string? SuggestedSeatId, string? ExistingDeviceId, bool DuplicateHardware);
+    DateTimeOffset LastSeen, string? SuggestedSeatId, string? ExistingDeviceId, bool DuplicateHardware, string? IpAddress = null);
 public sealed record EnrollmentOverview(EnrollmentWindow Window, PendingDevice[] Requests);
 
 public sealed partial class RoomStore
@@ -18,7 +18,7 @@ public sealed partial class RoomStore
     }
 
     private static bool Hex64(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
-    public EnrollmentState RequestEnrollment(EnrollmentRequest request, string claim)
+    public EnrollmentState RequestEnrollment(EnrollmentRequest request, string claim, string? ipAddress = null)
     {
         lock (gate)
         {
@@ -32,7 +32,7 @@ public sealed partial class RoomStore
             {
                 var saved = Scalar("SELECT fingerprint FROM enrollment_requests WHERE id=$id", ("$id", existing)) as string;
                 if (saved != fingerprint) throw new UnauthorizedAccessException("接入凭证与设备标识不一致。");
-                return PollEnrollment(existing, claim);
+                return PollEnrollment(existing, claim, ipAddress);
             }
             if (!Window().Open) throw new ArgumentException("教师尚未开启批量接入，请稍后重试。");
             if (tokens.ContainsKey(hash)) throw new ArgumentException("此申请凭证已被使用，请重新生成独立凭证。");
@@ -43,11 +43,12 @@ public sealed partial class RoomStore
             Exec("INSERT INTO enrollment_requests VALUES($id,$name,$fingerprint,$hash,'pending',NULL,$now,$now,$expiry)",
                 ("$id", id), ("$name", request.Name.Trim()), ("$fingerprint", fingerprint), ("$hash", hash),
                 ("$now", Now.ToString("O")), ("$expiry", Now.AddHours(24).ToString("O")));
+            UpdateEnrollmentAddress(id, ipAddress);
             return new("pending", id, null);
         }
     }
 
-    public EnrollmentState PollEnrollment(string id, string claim)
+    public EnrollmentState PollEnrollment(string id, string claim, string? ipAddress = null)
     {
         lock (gate)
         {
@@ -61,9 +62,13 @@ public sealed partial class RoomStore
                 status = reader.GetString(0); deviceId = reader.IsDBNull(1) ? null : reader.GetString(1);
                 expires = DateTimeOffset.Parse(reader.GetString(2));
             }
+            UpdateEnrollmentAddress(id, ipAddress);
             if (status == "approved")
-                return devices.ContainsKey(deviceId!) && tokens.GetValueOrDefault(hash) == deviceId
-                    ? new("approved", id, deviceId) : new("revoked", id, null);
+            {
+                if (devices.TryGetValue(deviceId!, out var device) && tokens.GetValueOrDefault(hash) == deviceId)
+                { UpdateDeviceAddress(device, ipAddress); return new("approved", id, deviceId); }
+                return new("revoked", id, null);
+            }
             if (expires <= Now) return new("expired", id, null);
             Exec("UPDATE enrollment_requests SET last_seen=$now WHERE id=$id", ("$now", Now.ToString("O")), ("$id", id));
             return new(status, id, null);
@@ -76,19 +81,21 @@ public sealed partial class RoomStore
         {
             var requests = new List<PendingDevice>();
             using (var cmd = Command("""
-                SELECT r.id,r.name,r.fingerprint,r.created_at,r.last_seen,d.id,d.seat_id
+                SELECT r.id,r.name,r.fingerprint,r.created_at,r.last_seen,d.id,d.seat_id,a.ip_address
                 FROM enrollment_requests r LEFT JOIN device_hardware h ON h.fingerprint=r.fingerprint
                 LEFT JOIN devices d ON d.id=h.device_id
+                LEFT JOIN enrollment_addresses a ON a.request_id=r.id
                 WHERE r.status='pending' AND r.expires_at>$now ORDER BY r.created_at,r.rowid
                 """, ("$now", Now.ToString("O"))))
             using (var reader = cmd.ExecuteReader())
                 while (reader.Read())
                 {
                     var suggested = reader.IsDBNull(6) ? null : reader.GetString(6);
-                    if (suggested is null && MachineIdentity.SeatNumber(reader.GetString(1)) is { } n && n <= Seats.Length)
-                        suggested = Seats[n - 1].Id;
+                    if (suggested is null && MachineIdentity.SeatNumber(reader.GetString(1)) is { } n)
+                        suggested = Seats.FirstOrDefault(s => SeatKey(s.Label) == SeatKey(n.ToString()))?.Id;
                     requests.Add(new(reader.GetString(0), reader.GetString(1), reader.GetString(2), DateTimeOffset.Parse(reader.GetString(3)),
-                        DateTimeOffset.Parse(reader.GetString(4)), suggested, reader.IsDBNull(5) ? null : reader.GetString(5), false));
+                        DateTimeOffset.Parse(reader.GetString(4)), suggested, reader.IsDBNull(5) ? null : reader.GetString(5), false,
+                        reader.IsDBNull(7) ? null : reader.GetString(7)));
                 }
             var planned = new HashSet<string>();
             var suggestions = new Dictionary<string, string?>();
@@ -128,7 +135,7 @@ public sealed partial class RoomStore
                 if (devices.Values.Any(d => !d.Demo && d.SeatId == item.SeatId && d.Id != request.ExistingDeviceId))
                     throw new ArgumentException($"座位 {Seats.First(s => s.Id == item.SeatId).Label} 已被其他设备占用。");
                 var hash = (string)Scalar("SELECT claim_hash FROM enrollment_requests WHERE id=$id", ("$id", item.RequestId))!;
-                plan.Add((request, new Device { Id = Guid.NewGuid().ToString("N"), Name = request.Name, SeatId = item.SeatId }, hash));
+                plan.Add((request, new Device { Id = Guid.NewGuid().ToString("N"), Name = request.Name, SeatId = item.SeatId, IpAddress = request.IpAddress }, hash));
             }
             using var transaction = db.BeginTransaction();
             foreach (var p in plan)
@@ -137,10 +144,12 @@ public sealed partial class RoomStore
                 {
                     Exec("DELETE FROM device_hardware WHERE device_id=$id", ("$id", old));
                     Exec("DELETE FROM devices WHERE id=$id", ("$id", old));
+                    Exec("DELETE FROM device_addresses WHERE device_id=$id", ("$id", old));
                 }
                 Exec("INSERT INTO devices(id,name,seat_id,token_hash) VALUES($id,$name,$seat,$hash)", ("$id", p.Device.Id),
                     ("$name", p.Device.Name), ("$seat", p.Device.SeatId), ("$hash", p.Hash));
                 Exec("INSERT INTO device_hardware VALUES($fingerprint,$id)", ("$fingerprint", p.Request.HardwareFingerprint), ("$id", p.Device.Id));
+                if (p.Device.IpAddress is not null) Exec("INSERT INTO device_addresses VALUES($id,$ip)", ("$id", p.Device.Id), ("$ip", p.Device.IpAddress));
                 Exec("UPDATE enrollment_requests SET status='approved',device_id=$device WHERE id=$id", ("$device", p.Device.Id), ("$id", p.Request.Id));
             }
             transaction.Commit();

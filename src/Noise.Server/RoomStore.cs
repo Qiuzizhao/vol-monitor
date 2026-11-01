@@ -21,7 +21,9 @@ public sealed partial class RoomStore : IDisposable
     private DateTimeOffset? calibrationUntil;
     private long lastBucket = -1;
     public string RoomName { get; }
-    public Seat[] Seats { get; }
+    public Seat[] Seats { get; private set; }
+    public int LayoutRows { get; private set; }
+    public int LayoutColumns { get; private set; }
     public Zone[] Zones { get; } = [new("front-left", "前排左区"), new("front-right", "前排右区"),
         new("middle-left", "中排左区"), new("middle-right", "中排右区"),
         new("back-left", "后排左区"), new("back-right", "后排右区")];
@@ -48,6 +50,9 @@ public sealed partial class RoomStore : IDisposable
             CREATE TABLE IF NOT EXISTS annotations(id TEXT PRIMARY KEY,session_id TEXT,time TEXT,text TEXT,kind TEXT);
             CREATE TABLE IF NOT EXISTS device_hardware(fingerprint TEXT PRIMARY KEY,device_id TEXT UNIQUE);
             CREATE TABLE IF NOT EXISTS enrollment_requests(id TEXT PRIMARY KEY,name TEXT,fingerprint TEXT,claim_hash TEXT UNIQUE,status TEXT,device_id TEXT,created_at TEXT,last_seen TEXT,expires_at TEXT);
+            CREATE TABLE IF NOT EXISTS device_addresses(device_id TEXT PRIMARY KEY,ip_address TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS enrollment_addresses(request_id TEXT PRIMARY KEY,ip_address TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS room_layout(id INTEGER PRIMARY KEY,rows INTEGER,columns INTEGER);
             """
         );
         // A restart never silently resumes microphone collection.
@@ -69,12 +74,14 @@ public sealed partial class RoomStore : IDisposable
             while (reader.Read()) seats.Add(new(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetString(4)));
             Seats = seats.ToArray();
         }
-        using (var cmd = Command("SELECT id,name,seat_id,token_hash,microphone_id FROM devices"))
+        InitializeLayout();
+        using (var cmd = Command("SELECT d.id,d.name,d.seat_id,d.token_hash,d.microphone_id,a.ip_address FROM devices d LEFT JOIN device_addresses a ON a.device_id=d.id"))
         using (var reader = cmd.ExecuteReader())
             while (reader.Read())
             {
                 var d = new Device { Id = reader.GetString(0), Name = reader.GetString(1),
-                    SeatId = reader.IsDBNull(2) ? null : reader.GetString(2), MicrophoneId = reader.IsDBNull(4) ? null : reader.GetString(4) };
+                    SeatId = reader.IsDBNull(2) ? null : reader.GetString(2), MicrophoneId = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    IpAddress = reader.IsDBNull(5) ? null : reader.GetString(5) };
                 devices.Add(d.Id, d);
                 tokens.Add(reader.GetString(3), d.Id);
             }
@@ -119,6 +126,7 @@ public sealed partial class RoomStore : IDisposable
             Exec("DELETE FROM devices WHERE id=$id", ("$id", id));
             devices.Remove(id);
             Exec("DELETE FROM device_hardware WHERE device_id=$id", ("$id", id));
+            Exec("DELETE FROM device_addresses WHERE device_id=$id", ("$id", id));
             foreach (var key in tokens.Where(x => x.Value == id).Select(x => x.Key).ToArray()) tokens.Remove(key);
         }
     }
@@ -177,11 +185,12 @@ public sealed partial class RoomStore : IDisposable
         }
     }
 
-    public DeviceCommand Report(string id, DeviceReport report)
+    public DeviceCommand Report(string id, DeviceReport report, string? ipAddress = null)
     {
         lock (gate)
         {
             var d = devices[id];
+            UpdateDeviceAddress(d, ipAddress);
             if (string.IsNullOrWhiteSpace(report.BootId) || report.BootId.Length > 64 || report.Seq < 0) throw new ArgumentException("设备序列无效。");
             if (d.BootId == report.BootId && report.Seq <= d.Seq) return GetCommand(d);
             d.BootId = report.BootId; d.Seq = report.Seq; d.LastSeen = Now;
@@ -259,7 +268,7 @@ public sealed partial class RoomStore : IDisposable
         var d = devices.Values.FirstOrDefault(d => d.SeatId == seat.Id && d.Demo == (session?.Demo == true));
         if (d is null) return new SeatView(seat.Id, seat.Label, seat.Row, seat.Column, seat.ZoneId, null, null, "unbound", null, null, null, null, null);
         var status = Status(d, now);
-        return new SeatView(seat.Id, seat.Label, seat.Row, seat.Column, seat.ZoneId, d.Id, d.Name, status,
+        return new SeatView(seat.Id, seat.Label, seat.Row, seat.Column, seat.ZoneId, d.Id, d.IpAddress ?? "未连接", status,
             status == "ok" && d.Smoothed is { } level && d.Baseline is { } baseline ? Acoustics.Score(level, baseline) : null,
             d.Level, d.Baseline, d.LastSeen, d.Clipping);
     }).ToArray();
@@ -289,8 +298,8 @@ public sealed partial class RoomStore : IDisposable
             var now = Now; var seats = SeatViews(now);
             return new(RoomName, now, Acoustics.AlgorithmVersion, session, calibrationId,
                 calibrationUntil, seats, ZoneViews(seats, now, false),
-                devices.Values.Where(d => !d.Demo).Select(d => new DeviceView(d.Id, d.Name, d.SeatId, Status(d, now), d.MicrophoneId, d.Baseline, d.LastSeen)).ToArray(),
-                trend.ToArray(), annotations.TakeLast(30).Reverse().ToArray());
+                devices.Values.Where(d => !d.Demo).Select(d => new DeviceView(d.Id, d.IpAddress ?? "未连接", d.SeatId, Status(d, now), d.MicrophoneId, d.Baseline, d.LastSeen)).ToArray(),
+                trend.ToArray(), annotations.TakeLast(30).Reverse().ToArray(), LayoutRows, LayoutColumns);
         }
     }
 

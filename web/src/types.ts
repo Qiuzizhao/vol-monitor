@@ -4,4 +4,4 @@ export interface Zone { id: string; name: string; score: number | null; valid: n
 export interface Device { id: string; name: string; seatId: string | null; status: string; microphoneId: string | null; baselineDbfs: number | null; lastSeen: string | null }
 export interface Trend { time: string; average: number | null; zones: Record<string, number | null> }
 export interface Annotation { id: string; sessionId: string; time: string; text: string; kind: string }
-export interface Dashboard { roomName: string; serverTime: string; algorithmVersion: string; session: Session | null; calibrationId: string | null; calibrationUntil: string | null; seats: Seat[]; zones: Zone[]; devices: Device[]; trend: Trend[]; annotations: Annotation[] }
+export interface Dashboard { layoutRows: number; layoutColumns: number; roomName: string; serverTime: string; algorithmVersion: string; session: Session | null; calibrationId: string | null; calibrationUntil: string | null; seats: Seat[]; zones: Zone[]; devices: Device[]; trend: Trend[]; annotations: Annotation[] }
