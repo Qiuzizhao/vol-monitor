@@ -164,7 +164,6 @@ teacher.MapPost("/enrollment/approve", (EnrollmentBatch request, RoomStore store
 teacher.MapPost("/enrollment/{id}/reject", (string id, RoomStore store) => { store.RejectEnrollment(id); return Results.Ok(); });
 teacher.MapPut("/devices/{id}/seat", (string id, SeatAssignment request, RoomStore store) => { store.Assign(id, request.SeatId); return Results.Ok(); });
 teacher.MapDelete("/devices/{id}", (string id, RoomStore store) => { store.DeleteDevice(id); return Results.Ok(); });
-teacher.MapPost("/calibrations", (RoomStore store) => { store.Calibrate(); return Results.Ok(); });
 teacher.MapPost("/annotations", (AnnotationRequest request, RoomStore store) => { store.AddAnnotation(request.Text); return Results.Ok(); });
 teacher.MapGet("/sessions", (RoomStore store) => store.History());
 teacher.MapGet("/sessions/{id}/export.csv", (string id, RoomStore store) => Results.File(Encoding.UTF8.GetBytes(store.Export(id)), "text/csv; charset=utf-8", $"roomscope-{id[..Math.Min(id.Length, 8)]}.csv"));

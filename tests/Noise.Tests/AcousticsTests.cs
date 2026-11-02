@@ -6,6 +6,18 @@ namespace Noise.Tests;
 public sealed class AcousticsTests
 {
     [Theory]
+    [InlineData(-120, 0)]
+    [InlineData(-110, 0)]
+    [InlineData(-109.5, 0.6)]
+    [InlineData(-90, 23.5)]
+    [InlineData(-85, 29.4)]
+    [InlineData(-65, 52.9)]
+    [InlineData(-25, 100)]
+    [InlineData(0, 100)]
+    public void DirectMicrophoneScoreHasNoRoomBaseline(double level, double expected) =>
+        Assert.Equal(expected, Acoustics.InputScore(level));
+
+    [Theory]
     [InlineData(-90, 0)]
     [InlineData(-65, 0)]
     [InlineData(-64, 0)]

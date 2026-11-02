@@ -183,13 +183,12 @@ public sealed class ApiTests
         Assert.Equal("running", live.Session.Status);
         var report = await agent.PostAsJsonAsync("/api/telemetry", new DeviceReport("boot",1,sessionId,"idle","mic"));
         Assert.Equal("running",(await report.Content.ReadFromJsonAsync<DeviceCommand>())!.State);
-        Assert.Equal(HttpStatusCode.OK,(await teacher.PostAsync("/api/teacher/calibrations",null)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,(await teacher.PostAsync("/api/teacher/calibrations",null)).StatusCode);
         var snapshot = (await teacher.GetFromJsonAsync<Dashboard>("/api/teacher/dashboard"))!;
-        var calibration = await agent.PostAsJsonAsync("/api/device/calibration", new CalibrationReport(sessionId,snapshot.CalibrationId!,"mic",-65,10));
-        Assert.Equal(HttpStatusCode.OK,calibration.StatusCode);
+        Assert.Null(snapshot.CalibrationId);
         Assert.Equal(HttpStatusCode.OK,(await agent.PostAsJsonAsync("/api/telemetry",new DeviceReport("boot",2,sessionId,"ok","mic",-35,-25,0))).StatusCode);
         snapshot = (await teacher.GetFromJsonAsync<Dashboard>("/api/teacher/dashboard"))!;
-        Assert.Equal(100d,snapshot.Seats[0].Score);
+        Assert.Equal(88.2,snapshot.Seats[0].Score);
         Assert.Equal(HttpStatusCode.OK,(await teacher.PostAsJsonAsync("/api/teacher/annotations", new AnnotationRequest("播放测试音源"))).StatusCode);
         var export = await teacher.GetAsync($"/api/teacher/sessions/{sessionId}/experiment.json");
         Assert.Equal("application/json",export.Content.Headers.ContentType!.MediaType);

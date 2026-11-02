@@ -32,10 +32,10 @@ Copy-Item scripts/console.ps1,scripts/launch-ui.ps1,scripts/startup-worker.ps1 $
 Copy-Item scripts/start-student.ps1,scripts/console.ps1,scripts/launch-ui.ps1,scripts/startup-worker.ps1 $student
 Copy-Item scripts/start-teacher.cmd (Join-Path $teacherRoot '启动教师端.cmd')
 Copy-Item scripts/start-student.cmd (Join-Path $studentRoot '启动学生端.cmd')
-Set-Content -Encoding UTF8 -Path (Join-Path $teacherRoot '使用说明.txt') -Value "1. 双击「启动教师端.cmd」，完成系统授权后自动打开管理页面。`r`n2. 页面点「学生机」→「生成学生端」，首次设置维护密码后下载安装包，发到学生机。`r`n3. 页面点「学生机」，核对自动填好的座位，点击「确认接入」。`r`n4. 接入后自动持续监测，首次使用保持安静约 10 秒完成自动校准。`r`n`r`n以后可在「学生机」→「维护密码」修改退出密码，对所有学生端立即生效。`r`n「程序」文件夹无需手动打开。请保留完整目录。"
+Set-Content -Encoding UTF8 -Path (Join-Path $teacherRoot '使用说明.txt') -Value "1. 双击「启动教师端.cmd」，完成系统授权后自动打开管理页面。`r`n2. 页面点「学生机」→「生成学生端」，首次设置维护密码后下载安装包，发到学生机。`r`n3. 页面点「学生机」，核对自动填好的座位，点击「确认接入」。`r`n4. 接入后自动持续监测，直接显示麦克风输入音量，无需校准。`r`n`r`n以后可在「学生机」→「维护密码」修改退出密码，对所有学生端立即生效。`r`n「程序」文件夹无需手动打开。请保留完整目录。"
 Set-Content -Encoding UTF8 -Path (Join-Path $studentRoot '使用说明.txt') -Value '双击「启动学生端.cmd」，完成系统授权，等待教师批准。以后登录后自动收进右下角托盘。退出请右键托盘图标，选择退出并输入维护密码。「程序」文件夹无需手动打开，请保留完整目录。'
 Copy-Item scripts/prepare-image.ps1,scripts/agent-deployment.example.json,IMAGE-DEPLOYMENT.md $student
-Compress-Archive -Path "$studentRoot/*" -DestinationPath "artifacts/机房音量管理-学生端-v0.6.6-$Runtime.zip" -Force
-Copy-Item "artifacts/机房音量管理-学生端-v0.6.6-$Runtime.zip" (Join-Path $teacher 'student-template.zip')
-Compress-Archive -Path "$teacherRoot/*" -DestinationPath "artifacts/机房音量管理-教师端-v0.6.6-$Runtime.zip" -Force
+Compress-Archive -Path "$studentRoot/*" -DestinationPath "artifacts/机房音量管理-学生端-v0.7-$Runtime.zip" -Force
+Copy-Item "artifacts/机房音量管理-学生端-v0.7-$Runtime.zip" (Join-Path $teacher 'student-template.zip')
+Compress-Archive -Path "$teacherRoot/*" -DestinationPath "artifacts/机房音量管理-教师端-v0.7-$Runtime.zip" -Force
 Write-Host '运行包已生成，保存在 artifacts 目录。'

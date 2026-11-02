@@ -146,7 +146,10 @@ public sealed partial class RoomStore : IDisposable
             Exec("INSERT INTO sessions VALUES($id,$name,$mode,$demo,$status,$start,NULL,$algorithm,$config)",
                 ("$id", session.Id), ("$name", session.Name), ("$mode", session.Mode), ("$demo", session.Demo),
                 ("$status", session.Status), ("$start", session.StartedAt.ToString("O")), ("$algorithm", Acoustics.AlgorithmVersion),
-                ("$config", JsonSerializer.Serialize(new { alpha = .35, deadband = Acoustics.DeadbandDb, span = Acoustics.ScoreSpanDb, percentile = .7,
+                ("$config", JsonSerializer.Serialize(new { scoring = continuousMonitoring ? "microphone" : "baseline", alpha = .35,
+                    attackAlpha = continuousMonitoring ? .8 : .35, inputFloorDbfs = Acoustics.InputFloorDbfs, inputCeilingDbfs = Acoustics.InputCeilingDbfs,
+                    deadband = continuousMonitoring ? 0 : Acoustics.DeadbandDb,
+                    span = continuousMonitoring ? Acoustics.InputCeilingDbfs - Acoustics.InputFloorDbfs : Acoustics.ScoreSpanDb, percentile = .7,
                     alertThreshold = request.Mode == "discussion" ? 85 : 70, alertSeconds = 5, clearSeconds = 3, bucketSeconds = 5 })));
             if (request.Demo)
                 foreach (var seat in Seats)
@@ -212,11 +215,14 @@ public sealed partial class RoomStore : IDisposable
                     !double.IsFinite(peak) || peak is < -120 or > 0 || peak < level ||
                     report.ClippingRatio is not { } clipping || !double.IsFinite(clipping) || clipping is < 0 or > 1 ||
                     report.SampleDurationMs is < 500 or > 2000) throw new ArgumentException("音量统计超出有效范围。");
-                if (session is { Status: "running", Demo: false } && report.SessionId == session.Id && d.SeatId is not null && report.CaptureStatus == "ok")
+                if (session is { Status: "running", Demo: false } && report.SessionId == session.Id && d.SeatId is not null &&
+                    (report.CaptureStatus == "ok" || continuousMonitoring && report.CaptureStatus == "no_signal"))
                 {
                     var fresh = d.LastSample is not null && Now - d.LastSample <= TimeSpan.FromSeconds(3);
                     d.Level = level; d.Peak = peak; d.Clipping = clipping;
-                    d.Smoothed = fresh && d.Smoothed is { } old ? .35 * level + .65 * old : level;
+                    var alpha = continuousMonitoring && d.Smoothed is { } previous && level > previous ? .8 : .35;
+                    d.Smoothed = continuousMonitoring && level <= Acoustics.InputFloorDbfs ? level :
+                        fresh && d.Smoothed is { } old && (!continuousMonitoring || old > Acoustics.InputFloorDbfs) ? alpha * level + (1 - alpha) * old : level;
                     d.LastSample = Now;
                 }
             }
@@ -228,6 +234,9 @@ public sealed partial class RoomStore : IDisposable
     {
         var active = session is { Status: "running", Demo: false } && d.SeatId is not null;
         var seat = Seats.FirstOrDefault(s => s.Id == d.SeatId);
+        if (continuousMonitoring)
+            return new(session?.Id, active ? "running" : "idle", null, null, seat?.Label,
+                seat is null ? null : Zones.First(z => z.Id == seat.ZoneId).Name, Acoustics.AlgorithmVersion);
         var pendingId = active && Now <= calibrationUntil ? calibrationId : null;
         var pendingUntil = pendingId is not null ? calibrationUntil : null;
         if (continuousMonitoring && active && pendingId is null && d.Baseline is null && d.MicrophoneId is not null)
@@ -273,7 +282,8 @@ public sealed partial class RoomStore : IDisposable
         if (now - d.LastSeen > TimeSpan.FromSeconds(3)) return "stale";
         if (session is not { Status: "running" }) return "idle";
         if (d.Status is "error" or "blocked" or "no_signal" or "calibrating") return d.Status;
-        if (d.Baseline is null) return "uncalibrated";
+        if (d.SeatId is null) return "unbound";
+        if (!continuousMonitoring && d.Baseline is null) return "uncalibrated";
         if (d.LastSample is null || now - d.LastSample > TimeSpan.FromSeconds(3)) return "stale";
         return "ok";
     }
@@ -284,7 +294,9 @@ public sealed partial class RoomStore : IDisposable
         if (d is null) return new SeatView(seat.Id, seat.Label, seat.Row, seat.Column, seat.ZoneId, null, null, "unbound", null, null, null, null, null);
         var status = Status(d, now);
         return new SeatView(seat.Id, seat.Label, seat.Row, seat.Column, seat.ZoneId, d.Id, d.IpAddress ?? "未连接", status,
-            status == "ok" && d.Smoothed is { } level && d.Baseline is { } baseline ? Acoustics.Score(level, baseline) : null,
+            continuousMonitoring ?
+                ((status is "ok" or "no_signal") && d.LastSample is not null && now - d.LastSample <= TimeSpan.FromSeconds(3) && d.Smoothed is { } directLevel ? Acoustics.InputScore(directLevel) : null) :
+                (status == "ok" && d.Smoothed is { } level && d.Baseline is { } baseline ? Acoustics.Score(level, baseline) : null),
             d.Level, d.Baseline, d.LastSeen, d.Clipping);
     }).ToArray();
 

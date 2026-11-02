@@ -40,7 +40,7 @@ public sealed class AgentWorker : IAsyncDisposable
                 var duration = summary is not null && audio.SamplesPerSecond > 0
                     ? (int)(summary.SampleCount * 1000 / audio.SamplesPerSecond) : 1000;
                 if (duration is < 500 or > 2000) summary = null;
-                var status = audio.Error is not null ? "error" : summary is null ? "idle" : summary.LevelDbfs <= -110 ? "no_signal" : "ok";
+                var status = audio.Error is not null ? "error" : summary is null ? "idle" : summary.LevelDbfs <= Acoustics.InputFloorDbfs ? "no_signal" : "ok";
                 if (currentCalibration is not null && currentCalibration != completedCalibration && summary is not null && status == "ok")
                 {
                     baselineSamples.Add(summary.LevelDbfs);

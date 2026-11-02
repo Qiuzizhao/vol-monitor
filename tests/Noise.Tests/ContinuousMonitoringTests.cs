@@ -20,60 +20,64 @@ public sealed class ContinuousMonitoringTests : IDisposable
         store.ApproveEnrollments(new([new(pending.RequestId!, seat)]));
         return store.PollEnrollment(pending.RequestId!, claim).DeviceId!;
     }
-    private void Baseline(string id, DeviceCommand command, string mic = "mic") =>
-        store.SaveCalibration(id, new(command.SessionId!, command.CalibrationId!, mic, -65, 10));
-
     [Fact]
-    public void StartupAndLateArrivalsAutomaticallyMonitorAndCalibrateIndependently()
+    public void StartupAndLateArrivalsImmediatelyMonitorWithoutCalibration()
     {
         Assert.Equal("running", store.Snapshot().Session!.Status);
-        var first = Enroll('A', "seat-01");
-        var command = store.Report(first, new("boot", 1, null, "idle", "mic"));
-        Assert.Equal("running", command.State); Assert.NotNull(command.CalibrationId);
-        Baseline(first, command);
+        var id = Enroll('A', "seat-01");
+        var command = store.Report(id, new("boot", 1, null, "idle", "mic"));
+        Assert.Equal("running", command.State); Assert.Null(command.CalibrationId);
+        store.Report(id, new("boot", 2, command.SessionId, "ok", "mic", -65, -55, 0));
+        Assert.Equal(52.9, store.Snapshot().Seats[0].Score);
         clock.Advance(3600);
-        var second = Enroll('B', "seat-02");
-        var late = store.Report(second, new("boot", 1, null, "idle", "mic"));
-        Assert.Equal("running", late.State); Assert.NotNull(late.CalibrationId);
-        Assert.Throws<ArgumentException>(() => store.SaveCalibration(first, new(late.SessionId!, late.CalibrationId!, "mic", -65, 10)));
-        Baseline(second, late);
-        var existing = store.Report(first, new("boot", 2, command.SessionId, "ok", "mic", -35, -25, 0));
-        Assert.Null(existing.CalibrationId);
-        Assert.Equal(100d, store.Snapshot().Seats[0].Score);
+        var lateId = Enroll('B', "seat-02");
+        var late = store.Report(lateId, new("boot", 1, null, "idle", "mic"));
+        Assert.Equal("running", late.State); Assert.Null(late.CalibrationId);
+        store.Report(lateId, new("boot", 2, late.SessionId, "ok", "mic", -65, -55, 0));
+        Assert.Equal(52.9, store.Snapshot().Seats[1].Score);
     }
 
     [Fact]
-    public void RestartResumesMonitoringAndReusesSavedBaselineAndBinding()
+    public void RestartAndMicrophoneChangeNeedNoBaselineAndKeepBinding()
     {
         var id = Enroll('A', "seat-01");
         var command = store.Report(id, new("boot", 1, null, "idle", "mic"));
-        Baseline(id, command);
         store.Dispose(); store = Open();
-        var resumed = store.Report(id, new("new-boot", 1, command.SessionId, "idle", "mic"));
+        var resumed = store.Report(id, new("new-boot", 1, command.SessionId, "idle", "other-mic"));
         Assert.Equal("running", resumed.State); Assert.NotEqual(command.SessionId, resumed.SessionId);
         Assert.Null(resumed.CalibrationId); Assert.Equal("01", resumed.Seat);
-        store.Report(id, new("new-boot", 2, resumed.SessionId, "ok", "mic", -35, -25, 0));
-        Assert.Equal(100d, store.Snapshot().Seats[0].Score);
+        store.Report(id, new("new-boot", 2, resumed.SessionId, "ok", "other-mic", -35, -25, 0));
+        Assert.Equal(88.2, store.Snapshot().Seats[0].Score);
     }
 
     [Fact]
-    public void ExpiredCalibrationRetriesAndChangingMicrophoneRequestsANewBaseline()
+    public void SilenceShowsZeroAndWhisperImmediatelyAppearsButOfflineIsMissing()
     {
         var id = Enroll('A', "seat-01");
-        var original = store.Report(id, new("boot", 1, null, "idle", "mic"));
-        clock.Advance(21);
-        Assert.Throws<ArgumentException>(() => Baseline(id, original));
-        var retry = store.Report(id, new("boot", 2, original.SessionId, "idle", "mic"));
-        Assert.NotEqual(original.CalibrationId, retry.CalibrationId);
-        Baseline(id, retry);
-        var changed = store.Report(id, new("boot", 3, retry.SessionId, "idle", "other-mic"));
-        Assert.NotNull(changed.CalibrationId);
-        Assert.NotEqual(retry.CalibrationId, changed.CalibrationId);
-        Baseline(id, changed, "other-mic");
+        var command = store.Report(id, new("boot", 1, null, "idle", "mic"));
+        store.Report(id, new("boot", 2, command.SessionId, "no_signal", "mic", -120, -120, 0));
+        Assert.Equal(0d, store.Snapshot().Seats[0].Score);
+        clock.Advance(1);
+        store.Report(id, new("boot", 3, command.SessionId, "ok", "mic", -85, -75, 0));
+        Assert.Equal(29.4, store.Snapshot().Seats[0].Score);
+        store.Report(id, new("boot", 4, command.SessionId, "no_signal", "mic", -120, -120, 0));
+        Assert.Equal(0d, store.Snapshot().Seats[0].Score);
+        clock.Advance(11);
+        Assert.Null(store.Snapshot().Seats[0].Score);
         store.SaveLayout(new([["02"]]));
-        Assert.Equal("idle", store.Report(id, new("boot", 4, retry.SessionId, "idle", "other-mic")).State);
+        Assert.Equal("idle", store.Report(id, new("boot", 5, command.SessionId, "idle", "mic")).State);
     }
 
+    [Fact]
+    public void AnOldHighCalibrationCannotSubtractWhispers()
+    {
+        var id = Enroll('A', "seat-01");
+        var command = store.Report(id, new("boot", 1, null, "idle", "mic"));
+        store.Calibrate();
+        store.SaveCalibration(id, new(command.SessionId!, store.Snapshot().CalibrationId!, "mic", -40, 10));
+        store.Report(id, new("boot", 2, command.SessionId, "ok", "mic", -65, -55, 0));
+        Assert.Equal(52.9, store.Snapshot().Seats[0].Score);
+    }
     public void Dispose()
     {
         store.Dispose(); SqliteConnection.ClearAllPools();
