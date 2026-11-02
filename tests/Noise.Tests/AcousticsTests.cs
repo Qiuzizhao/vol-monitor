@@ -5,6 +5,20 @@ namespace Noise.Tests;
 
 public sealed class AcousticsTests
 {
+    [Theory]
+    [InlineData(-90, 0)]
+    [InlineData(-65, 0)]
+    [InlineData(-64, 0)]
+    [InlineData(-62, 11.1)]
+    [InlineData(-59, 27.8)]
+    [InlineData(-53, 61.1)]
+    [InlineData(-46, 100)]
+    [InlineData(-20, 100)]
+    public void IncreasedSensitivityRespondsToQuietSoundsAndKeepsTheZeroToHundredRange(double level, double expected)
+    {
+        Assert.Equal(expected, Acoustics.Score(level, -65));
+    }
+
     [Fact]
     public void SineWaveHasExpectedRmsAndDrainDoesNotRetainSamples()
     {

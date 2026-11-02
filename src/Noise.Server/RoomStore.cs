@@ -146,7 +146,7 @@ public sealed partial class RoomStore : IDisposable
             Exec("INSERT INTO sessions VALUES($id,$name,$mode,$demo,$status,$start,NULL,$algorithm,$config)",
                 ("$id", session.Id), ("$name", session.Name), ("$mode", session.Mode), ("$demo", session.Demo),
                 ("$status", session.Status), ("$start", session.StartedAt.ToString("O")), ("$algorithm", Acoustics.AlgorithmVersion),
-                ("$config", JsonSerializer.Serialize(new { alpha = .35, deadband = 3, span = 27, percentile = .7,
+                ("$config", JsonSerializer.Serialize(new { alpha = .35, deadband = Acoustics.DeadbandDb, span = Acoustics.ScoreSpanDb, percentile = .7,
                     alertThreshold = request.Mode == "discussion" ? 85 : 70, alertSeconds = 5, clearSeconds = 3, bucketSeconds = 5 })));
             if (request.Demo)
                 foreach (var seat in Seats)
@@ -335,7 +335,7 @@ public sealed partial class RoomStore : IDisposable
                     var index = Array.IndexOf(Seats, seat);
                     var zone = Array.FindIndex(Zones, z => z.Id == seat.ZoneId);
                     var score = zone == hot ? 83 + 8 * Math.Sin(seconds / 5 + index) : 22 + zone * 4 + 9 * Math.Sin(seconds / 7 + index);
-                    d.Level = d.Smoothed = -65 + 3 + score * .27; d.Peak = Math.Min(0, d.Level.Value + 8);
+                    d.Level = d.Smoothed = -65 + Acoustics.DeadbandDb + score * Acoustics.ScoreSpanDb / 100; d.Peak = Math.Min(0, d.Level.Value + 8);
                     d.LastSeen = d.LastSample = now; d.Status = "ok";
                 }
             }

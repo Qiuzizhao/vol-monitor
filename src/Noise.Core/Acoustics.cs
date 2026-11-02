@@ -2,13 +2,15 @@ namespace Noise.Core;
 
 public static class Acoustics
 {
-    public const string AlgorithmVersion = "rms-baseline-p70-v1";
+    public const string AlgorithmVersion = "rms-baseline-p70-v2";
+    public const double DeadbandDb = 1;
+    public const double ScoreSpanDb = 18;
 
     public static double Dbfs(double meanSquare) =>
         Math.Clamp(10 * Math.Log10(Math.Max(meanSquare, 1e-12)), -120, 0);
 
     public static double Score(double level, double baseline) =>
-        Math.Round(Math.Clamp((level - baseline - 3) / 27 * 100, 0, 100), 1);
+        Math.Round(Math.Clamp((level - baseline - DeadbandDb) / ScoreSpanDb * 100, 0, 100), 1);
 
     public static double Percentile(IEnumerable<double> source, double p)
     {

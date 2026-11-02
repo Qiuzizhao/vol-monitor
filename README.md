@@ -1,4 +1,4 @@
-# 机房音量管理 v0.6.5
+# 机房音量管理 v0.6.6
 
 Windows 10/11 机房音量管理工具。教师端查看座位音量和管理学生机；学生端自动连接并采集音量统计，不保存录音。
 
@@ -52,7 +52,7 @@ Windows 10/11 机房音量管理工具。教师端查看座位音量和管理学
 .\scripts\build.ps1
 ```
 
-输出：`artifacts/机房音量管理-教师端-v0.6.5-win-x64.zip`、`artifacts/机房音量管理-学生端-v0.6.5-win-x64.zip`。
+输出：`artifacts/机房音量管理-教师端-v0.6.6-win-x64.zip`、`artifacts/机房音量管理-学生端-v0.6.6-win-x64.zip`。
 
 ```powershell
 dotnet test RoomScope.slnx
