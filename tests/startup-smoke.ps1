@@ -5,9 +5,15 @@ $repo = Split-Path $PSScriptRoot -Parent
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('RoomScope-test-' + [guid]::NewGuid().ToString('N'))
 $teacherDirectory = Join-Path $fixture '教师/程序'
 $previous = Get-Location
+$staleMutex = $null
 try {
     New-Item -ItemType Directory -Path (Join-Path $teacherDirectory 'data'),(Join-Path $fixture 'template/程序') -Force | Out-Null
     Copy-Item (Join-Path $repo 'scripts/start-teacher.ps1') $teacherDirectory
+    $mutexPrefix = 'Local\RoomScope.StartupTest.' + [guid]::NewGuid().ToString('N') + '.'
+    $scriptPath = Join-Path $teacherDirectory 'start-teacher.ps1'
+    [IO.File]::WriteAllText($scriptPath, [IO.File]::ReadAllText($scriptPath).Replace('Local\RoomScope.Teacher.', $mutexPrefix), [Text.UTF8Encoding]::new($true))
+    # A leftover named mutex with no owner must not prevent teacher startup.
+    $staleMutex = [Threading.Mutex]::new($false, ($mutexPrefix + [Security.Principal.WindowsIdentity]::GetCurrent().User.Value))
     Copy-Item (Join-Path $repo 'scripts/console.ps1') $teacherDirectory
     Set-Content (Join-Path $teacherDirectory 'Noise.Server.exe') 'placeholder'
     Set-Content (Join-Path $teacherDirectory 'roomscope-teacher.cer') 'public certificate fixture'
@@ -58,6 +64,7 @@ try {
     if (-not (Test-Path (Join-Path $teacherDirectory 'student-template.zip'))) { throw '学生端模板丢失。' }
     Write-Host '通过：沿用机房网络，登记登录自启，启动教师服务；学生端由教师页面设置密码后生成。'
 } finally {
+    if ($staleMutex) { $staleMutex.Dispose() }
     Set-Location $previous
     $resolved = [IO.Path]::GetFullPath($fixture)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
