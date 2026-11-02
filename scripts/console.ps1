@@ -46,3 +46,14 @@ function Get-StartupRetryDelay([int]$Attempt, [int]$ExitCode) {
     if ($ExitCode -eq 1223 -or $Attempt -ge 3) { return -1 }
     return [int][Math]::Pow(2, $Attempt)
 }
+
+function Get-StartupFailureMessage([string]$OutputPath, [string]$ErrorPath, [int]$ExitCode) {
+    $outputLines = @(Get-Content -LiteralPath $OutputPath -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $friendly = @($outputLines | Where-Object { $_.Trim() -match '^[\u4e00-\u9fff]' })
+    if ($friendly.Count) { return $friendly[-1].Trim() }
+    $errors = @(Get-Content -LiteralPath $ErrorPath -Encoding UTF8 -ErrorAction SilentlyContinue) -join "`n"
+    if ($errors -match 'ParserError|Unexpected token|解析错误|无法解析|意外的标记') { return '启动脚本无法解析，请完整解压新版运行包，不要混用不同版本的程序文件。' }
+    if ($errors -match 'UnauthorizedAccess|Access.*denied|拒绝访问|权限不足') { return '无法访问程序文件或设置，请检查解压目录的读写权限。' }
+    if ($errors -match 'not recognized|CommandNotFound|无法将|找不到') { return '启动所需文件或系统组件未找到，请完整解压运行包，并点「查看启动记录」核对缺失项目。' }
+    return "启动未完成（退出码 $ExitCode），请点「查看启动记录」查看具体原因。"
+}
