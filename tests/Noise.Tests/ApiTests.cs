@@ -21,7 +21,7 @@ public sealed class AppFactory(IPAddress? peer = null, bool packageFixture = fal
         .UseSetting("DataDirectory", DataPath).UseSetting("TeacherPassword", "test-password-123")
         .UseSetting("ClassroomServerUrl", "https://192.168.1.10:5081")
         .UseSetting("Logging:LogLevel:Default", "Error");
-        if (peer is not null) builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new PeerFilter(peer)));
+        builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new PeerFilter(peer ?? IPAddress.Parse("192.168.1.20"))));
         if (packageFixture) builder.ConfigureServices(services =>
         {
             var root = Path.Combine(DataPath, "package-source"); Directory.CreateDirectory(root);
@@ -109,7 +109,7 @@ public sealed class ApiTests
     [Fact]
     public async Task ForwardedLocalAddressDoesNotGrantRemoteTeacherAccess()
     {
-        using var factory = new AppFactory(IPAddress.Parse("192.168.1.20")); using var client = factory.Client();
+        using var factory = new AppFactory(IPAddress.Parse("203.0.113.20")); using var client = factory.Client();
         client.DefaultRequestHeaders.Add("X-Forwarded-For", "127.0.0.1");
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/teacher/dashboard")).StatusCode);
     }
@@ -127,6 +127,7 @@ public sealed class ApiTests
     {
         using var factory = new AppFactory(); using var teacher = await factory.Teacher(); using var agent = factory.Client(); using var stranger = factory.Client();
         stranger.DefaultRequestHeaders.Add("X-RoomScope", "1");
+        stranger.DefaultRequestHeaders.Add("Origin", "https://untrusted.invalid");
         await teacher.PostAsync("/api/teacher/enrollment/open", null);
         var claim = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
         agent.DefaultRequestHeaders.Authorization = new("Enrollment", claim);
@@ -154,10 +155,10 @@ public sealed class ApiTests
     }
 
     [Fact]
-    public async Task TeacherAuthAndCsrfHeaderAreRequired()
+    public async Task LanNeedsNoConnectionPasswordButCsrfHeaderIsRequired()
     {
         using var factory = new AppFactory(); using var client = factory.Client();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/teacher/dashboard")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/teacher/dashboard")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/login", new { password = "test-password-123" })).StatusCode);
         using var teacher = await factory.Teacher();
         Assert.Equal(HttpStatusCode.OK, (await teacher.GetAsync("/api/teacher/dashboard")).StatusCode);

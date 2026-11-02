@@ -99,7 +99,7 @@ try {
         Remove-Item -LiteralPath $migrationPointer -ErrorAction SilentlyContinue
         Write-Host '旧版检查完成，正在启动当前版本。'
     } else { Write-Host "已关闭 $stopped 个教师端相关进程。现在可以移动或删除旧目录，或启动新版。" }
-    if ($startup -and (Get-TeacherScript $startup.RoomScopeTeacher)) {
+    if (-not $ForStartup -and $startup -and (Get-TeacherScript $startup.RoomScopeTeacher)) {
         Remove-ItemProperty -LiteralPath $key -Name RoomScopeTeacher
         Write-Host '旧的教师端登录自启已取消。新版成功启动后会重新登记。'
     }

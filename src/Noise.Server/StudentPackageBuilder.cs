@@ -22,11 +22,18 @@ public sealed class StudentPackageBuilder(string programDirectory, string? class
         {
             foreach (var entry in zip.Entries.Where(e =>
                 e.FullName.Replace('\\', '/').Equals("程序/agent-deployment.json", StringComparison.OrdinalIgnoreCase) ||
-                e.FullName.Replace('\\', '/').Equals("程序/roomscope-teacher.cer", StringComparison.OrdinalIgnoreCase)).ToArray()) entry.Delete();
+                e.FullName.Replace('\\', '/').Equals("程序/roomscope-teacher.cer", StringComparison.OrdinalIgnoreCase) ||
+                e.FullName.Replace('\\', '/').Equals("程序/roomscope-root.cer", StringComparison.OrdinalIgnoreCase)).ToArray()) entry.Delete();
             using (var profile = zip.CreateEntry("程序/agent-deployment.json").Open())
-                JsonSerializer.Serialize(profile, new { Server = server.GetLeftPart(UriPartial.Authority), AutoEnroll = true, ManagedMode = true, EnableLoginStartup = true });
+                JsonSerializer.Serialize(profile, new { Server = server.GetLeftPart(UriPartial.Authority), AutoEnroll = true, ManagedMode = true, EnableLoginStartup = false, SystemGuard = true });
             using (var target = zip.CreateEntry("程序/roomscope-teacher.cer").Open())
             using (var source = File.OpenRead(certificate)) source.CopyTo(target);
+            var authority = Path.Combine(programDirectory, "roomscope-root.cer");
+            if (File.Exists(authority))
+            {
+                using var root = zip.CreateEntry("程序/roomscope-root.cer").Open();
+                using var source = File.OpenRead(authority); source.CopyTo(root);
+            }
         }
         return output.ToArray();
     }

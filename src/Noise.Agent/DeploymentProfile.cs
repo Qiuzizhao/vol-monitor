@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 namespace Noise.Agent;
 
 public sealed record DeploymentProfile(string Server, bool AutoEnroll = true, string? IdentityDirectory = null,
-    bool ManagedMode = false, bool EnableLoginStartup = false)
+    bool ManagedMode = false, bool EnableLoginStartup = false, bool SystemGuard = false)
 {
     public static string FilePath => Path.Combine(AppContext.BaseDirectory, "agent-deployment.json");
     public static DeploymentProfile? Load()

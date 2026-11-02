@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Net.WebSockets;
 using Microsoft.Extensions.DependencyInjection;
 using Noise.Server;
 using Xunit;
@@ -10,6 +11,34 @@ namespace Noise.Tests;
 
 public sealed class MaintenanceTests
 {
+    [Fact]
+    public async Task LanLiveConnectionDoesNotUseOrDependOnTheExitPassword()
+    {
+        using var factory=new AppFactory(IPAddress.Parse("192.168.1.50"));
+        using var http=factory.Client(); Assert.Equal(HttpStatusCode.OK,(await http.GetAsync("/api/teacher/dashboard")).StatusCode);
+        var client=factory.Server.CreateWebSocketClient(); client.ConfigureRequest=request=>request.Headers["Origin"]="https://localhost";
+        using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var socket=await client.ConnectAsync(new Uri("wss://localhost/ws/dashboard"),timeout.Token);
+        var buffer=new byte[200000]; await socket.ReceiveAsync(buffer,timeout.Token);
+        var access=factory.Services.GetRequiredService<TeacherAccess>(); access.SetPassword("1","1");
+        var packet=await socket.ReceiveAsync(buffer,timeout.Token); Assert.Equal(WebSocketMessageType.Text,packet.MessageType);
+        Assert.False(access.Verify("test-password-123")); Assert.True(access.Verify("1")); socket.Abort();
+    }
+
+    [Fact]
+    public async Task StudentPackageCarriesStablePublicAuthorityWithoutPrivateKeys()
+    {
+        using var factory=new AppFactory(IPAddress.Loopback,packageFixture:true);
+        using var teacher=factory.Client(); teacher.DefaultRequestHeaders.Add("X-RoomScope","1");
+        var source=Path.Combine(factory.DataPath,"package-source");
+        File.WriteAllText(Path.Combine(source,"roomscope-root.cer"),"public classroom root");
+        File.WriteAllText(Path.Combine(source,"authority.pfx"),"must not enter student package");
+        var response=await teacher.PostAsJsonAsync("/api/teacher/student-package",new { password="1",confirmation="1" });
+        Assert.Equal(HttpStatusCode.OK,response.StatusCode);
+        using var zip=new ZipArchive(new MemoryStream(await response.Content.ReadAsByteArrayAsync()));
+        Assert.NotNull(zip.GetEntry("程序/roomscope-root.cer")); Assert.DoesNotContain(zip.Entries,e=>e.FullName.EndsWith(".pfx",StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public async Task LocalTeacherCanChangePasswordAndItImmediatelyReplacesTheOldPasswordAndPersists()
     {
@@ -43,12 +72,18 @@ public sealed class MaintenanceTests
     }
 
     [Fact]
-    public async Task PasswordChangeInvalidatesExistingRemoteLoginCookies()
+    public async Task MaintenancePasswordChangeDoesNotAffectPasswordlessLanAccess()
     {
         using var factory = new AppFactory(); using var teacher = await factory.Teacher();
         Assert.Equal(HttpStatusCode.OK, (await teacher.GetAsync("/api/teacher/dashboard")).StatusCode);
         factory.Services.GetRequiredService<TeacherAccess>().SetPassword("new-password-123", "new-password-123");
-        Assert.Equal(HttpStatusCode.Unauthorized, (await teacher.GetAsync("/api/teacher/dashboard")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await teacher.GetAsync("/api/teacher/dashboard")).StatusCode);
+        using var stranger = factory.Client();
+        Assert.Equal(HttpStatusCode.OK, (await stranger.GetAsync("/api/teacher/dashboard")).StatusCode);
+        stranger.DefaultRequestHeaders.Add("X-RoomScope", "1");
+        var verified = await stranger.PostAsJsonAsync("/api/maintenance/verify", new { password = "new-password-123" });
+        Assert.Equal(HttpStatusCode.OK, verified.StatusCode); Assert.False(verified.Headers.Contains("Set-Cookie"));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await stranger.PostAsJsonAsync("/api/maintenance/verify", new { password = "test-password-123" })).StatusCode);
     }
 
     [Fact]
@@ -63,7 +98,8 @@ public sealed class MaintenanceTests
         Assert.Equal(5, zip.Entries.Count); Assert.NotNull(zip.GetEntry("启动学生端.cmd"));
         using var profile = JsonDocument.Parse(zip.GetEntry("程序/agent-deployment.json")!.Open());
         Assert.Equal("https://192.168.1.10:5081", profile.RootElement.GetProperty("Server").GetString());
-        foreach (var flag in new[] { "AutoEnroll", "ManagedMode", "EnableLoginStartup" }) Assert.True(profile.RootElement.GetProperty(flag).GetBoolean());
+        foreach (var flag in new[] { "AutoEnroll", "ManagedMode", "SystemGuard" }) Assert.True(profile.RootElement.GetProperty(flag).GetBoolean());
+        Assert.False(profile.RootElement.GetProperty("EnableLoginStartup").GetBoolean());
         foreach (var entry in zip.Entries)
         {
             Assert.DoesNotContain(".pfx", entry.FullName); Assert.DoesNotContain("data/", entry.FullName);

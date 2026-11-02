@@ -15,6 +15,7 @@ try {
     # A leftover named mutex with no owner must not prevent teacher startup.
     $staleMutex = [Threading.Mutex]::new($false, ($mutexPrefix + [Security.Principal.WindowsIdentity]::GetCurrent().User.Value))
     Copy-Item (Join-Path $repo 'scripts/console.ps1') $teacherDirectory
+    Set-Content -Encoding UTF8 (Join-Path $teacherDirectory 'configure-https.ps1') 'param($ServerIp,$Port,[switch]$AuthorityOnly); if(-not $AuthorityOnly){throw "Unexpected certificate replacement"}; Set-Content (Join-Path $PSScriptRoot "roomscope-root.cer") "public authority fixture"'
     Set-Content (Join-Path $teacherDirectory 'stop-teacher.ps1') 'param([switch]$ForStartup, [string]$CurrentDirectory); if (-not $ForStartup -or $CurrentDirectory -ne $PSScriptRoot) { throw "Invalid takeover parameters" }; $global:automaticTakeoverCalled = $true'
     Set-Content (Join-Path $teacherDirectory 'Noise.Server.exe') 'placeholder'
     Set-Content (Join-Path $teacherDirectory 'roomscope-teacher.cer') 'public certificate fixture'

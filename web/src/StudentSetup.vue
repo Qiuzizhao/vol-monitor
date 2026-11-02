@@ -35,7 +35,7 @@ onMounted(async()=>{try{configured.value=(await props.api('/maintenance')).confi
    <template v-else-if="mode==='password'||!configured">
     <div class="password-field"><label for="maintenance-new-password">新密码</label><div class="password-entry"><input id="maintenance-new-password" v-model="password" :type="showPassword?'text':'password'" autocomplete="new-password" placeholder="输入密码" :disabled="busy" required/><button type="button" :aria-label="showPassword?'隐藏新密码':'显示新密码'" :title="showPassword?'隐藏新密码':'显示新密码'" :aria-pressed="showPassword" aria-controls="maintenance-new-password" @click="showPassword=!showPassword" :disabled="busy"><EyeOff v-if="showPassword" :size="18" aria-hidden="true"/><Eye v-else :size="18" aria-hidden="true"/></button></div></div>
     <div class="password-field"><label for="maintenance-confirm-password">确认密码</label><div class="password-entry"><input id="maintenance-confirm-password" v-model="confirmation" :type="showConfirmation?'text':'password'" autocomplete="new-password" :disabled="busy" required/><button type="button" :aria-label="showConfirmation?'隐藏确认密码':'显示确认密码'" :title="showConfirmation?'隐藏确认密码':'显示确认密码'" :aria-pressed="showConfirmation" aria-controls="maintenance-confirm-password" @click="showConfirmation=!showConfirmation" :disabled="busy"><EyeOff v-if="showConfirmation" :size="18" aria-hidden="true"/><Eye v-else :size="18" aria-hidden="true"/></button></div></div>
-    <p>用于退出学生端，对所有学生机生效。</p>
+    <p>仅用于退出学生端，连接无需密码。</p>
    </template>
    <p v-else>使用当前维护密码。</p>
    <p v-if="error" class="password-error" role="alert">{{error}}</p>

@@ -9,5 +9,6 @@
     <ProjectReference Include="../Noise.Core/Noise.Core.csproj" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Management" Version="10.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
   </ItemGroup>
 </Project>

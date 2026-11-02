@@ -10,6 +10,7 @@ internal interface IAudioInput : IDisposable
     string? Error { get; }
     int SamplesPerSecond { get; }
     bool Running { get; }
+    string? ActiveDeviceId => null;
     AudioSummary? Drain();
     void Start(string deviceId);
     void Stop();
@@ -20,7 +21,8 @@ public sealed class AudioCapture : IAudioInput
     private readonly object lifecycle = new();
     private WasapiCapture? capture;
     private MMDevice? device;
-    private readonly AudioAccumulator accumulator = new();
+    private readonly AudioWindows accumulator = new();
+    public string? ActiveDeviceId { get; private set; }
     public string? Error { get; private set; }
     public int SamplesPerSecond { get; private set; }
     public bool Running => capture is not null;
@@ -46,8 +48,12 @@ public sealed class AudioCapture : IAudioInput
         try
         {
             using var enumerator = new MMDeviceEnumerator();
+            var available = ListDevices();
+            deviceId = SelectDevice(deviceId, available, DefaultDeviceId);
             device = enumerator.GetDevice(deviceId);
+            ActiveDeviceId = device.ID;
             capture = new WasapiCapture(device, false, 100);
+            var selectedCapture = capture;
             var format = capture.WaveFormat;
             var floating = format.Encoding == WaveFormatEncoding.IeeeFloat ||
                 format is WaveFormatExtensible ext && ext.SubFormat == new Guid("00000003-0000-0010-8000-00aa00389b71");
@@ -75,15 +81,23 @@ public sealed class AudioCapture : IAudioInput
                     squares += value * value; maximum = Math.Max(maximum, Math.Abs(value)); count++;
                     if (Math.Abs(value) >= .99) clipped++;
                 }
-                accumulator.AddEnergy(squares, maximum, count, clipped);
+                if (ReferenceEquals(capture, selectedCapture)) accumulator.AddEnergy(squares, maximum, count, clipped, SamplesPerSecond);
             };
-            capture.RecordingStopped += (_, e) => { if (e.Exception is not null) Error = e.Exception.Message; };
+            capture.RecordingStopped += (_, e) => { if (ReferenceEquals(capture, selectedCapture)) Error = e.Exception?.Message ?? "麦克风采集已停止。"; };
             capture.StartRecording();
         }
-        catch { Stop(); throw; }
+        catch (Exception e) { Stop(); Error = e.Message; throw; }
     }
 
     public AudioSummary? Drain() => accumulator.Drain();
+    internal static string SelectDevice(string preferred, (string Id,string Name)[] available, Func<string> defaultDevice)
+    {
+        if (available.Any(d => d.Id == preferred)) return preferred;
+        if (available.Length == 0) throw new InvalidOperationException("未找到麦克风，插入后会自动重试。");
+        try { var selected=defaultDevice(); if(available.Any(d=>d.Id==selected)) return selected; }
+        catch(Exception e) when(e is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+        return available[0].Id;
+    }
     public static string DefaultDeviceId()
     {
         using var enumerator = new MMDeviceEnumerator();
@@ -99,11 +113,12 @@ public sealed class AudioCapture : IAudioInput
     {
         if (capture is not null)
         {
-            try { capture.StopRecording(); } catch (Exception e) when (e is System.Runtime.InteropServices.COMException or InvalidOperationException) { }
-            capture.Dispose(); capture = null;
+            var previous = capture; capture = null;
+            try { previous.StopRecording(); } catch (Exception e) when (e is System.Runtime.InteropServices.COMException or InvalidOperationException) { }
+            previous.Dispose();
         }
         device?.Dispose(); device = null;
-        accumulator.Drain();
+        accumulator.Clear();
     }
     public void Dispose() => Stop();
 }

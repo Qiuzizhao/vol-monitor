@@ -8,7 +8,7 @@ public sealed class AgentWorker : IAsyncDisposable
 {
     private readonly CancellationTokenSource stopping = new();
     private readonly HttpClient http;
-    private readonly AgentConfig config;
+    private AgentConfig config;
     private readonly IAudioInput audio;
     private readonly Func<TimeSpan, CancellationToken, Task> delay;
     private readonly string boot = Guid.NewGuid().ToString("N");
@@ -69,7 +69,22 @@ public sealed class AgentWorker : IAsyncDisposable
                 command = next;
                 if (next.State == "running")
                 {
-                    if (!audio.Running || audio.Error is not null) { audio.Start(config.MicrophoneId); baselineSamples.Clear(); }
+                    if (!audio.Running || audio.Error is not null)
+                    {
+                        try
+                        {
+                            audio.Start(config.MicrophoneId); baselineSamples.Clear();
+                            if (audio.ActiveDeviceId is { } active && active != config.MicrophoneId)
+                            {
+                                config = config with { MicrophoneId = active };
+                                try { config.Save(); }
+                                catch (Exception e) when(e is IOException or UnauthorizedAccessException)
+                                { DiagnosticLog.Write(AgentConfig.DirectoryPath,"保存麦克风选择未完成",e); }
+                            }
+                        }
+                        catch (Exception e) when (e is InvalidOperationException or System.Runtime.InteropServices.COMException or NotSupportedException or UnauthorizedAccessException)
+                        { Updated?.Invoke("麦克风异常", "正在自动检测可用麦克风。"); await delay(TimeSpan.FromSeconds(2), ct); continue; }
+                    }
                     var nextCalibration = next.CalibrationId;
                     if (nextCalibration != currentCalibration)
                     { currentCalibration = nextCalibration; baselineSamples.Clear(); }

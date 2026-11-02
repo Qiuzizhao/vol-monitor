@@ -47,9 +47,9 @@ function Select-ClassroomNetwork($Addresses) {
     } finally { $dialog.Dispose() }
 }
 
-function Get-StartupRetryDelay([int]$Attempt, [int]$ExitCode) {
-    if ($ExitCode -eq 1223 -or $Attempt -ge 3) { return -1 }
-    return [int][Math]::Pow(2, $Attempt)
+function Get-StartupRetryDelay([int]$Attempt, [int]$ExitCode, [switch]$AtLogin) {
+    if ($ExitCode -eq 1223 -or (-not $AtLogin -and $Attempt -ge 3)) { return -1 }
+    return [int][Math]::Min(30, [Math]::Pow(2, [Math]::Min($Attempt,5)))
 }
 
 function Get-StartupFailureMessage([string]$OutputPath, [string]$ErrorPath, [int]$ExitCode) {

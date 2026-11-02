@@ -58,7 +58,7 @@ try {
     $global:upgradeFixtureState.SimulateCopyFailure = $false
     & $takeover -ForStartup -CurrentDirectory $current
     if (($global:upgradeFixtureState.Stopped -join ',') -ne '900002,900003,900004') { throw 'Wrong processes or shutdown order.' }
-    if (-not $global:upgradeFixtureState.RemovedStartup) { throw 'Old startup entry was not replaced.' }
+    if ($global:upgradeFixtureState.RemovedStartup) { throw 'Startup entry was removed before the new teacher became ready.' }
     foreach ($leaf in @('roomscope.db','roomscope.db-wal','teacher-auth.json','teacher.pfx','https-password.dpapi','https.json')) {
         if ((Get-FileHash (Join-Path $old ('data/' + $leaf))).Hash -ne (Get-FileHash (Join-Path $current ('data/' + $leaf))).Hash) { throw 'Migrated data changed.' }
     }

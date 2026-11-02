@@ -114,8 +114,7 @@ public sealed class LayoutAndAddressTests : IDisposable
     public async Task LayoutApiRequiresTeacherAuthorizationAndAcceptsAFullSheet()
     {
         using var factory = new AppFactory(); using var unauthenticated = factory.Client();
-        unauthenticated.DefaultRequestHeaders.Add("X-RoomScope", "1");
-        Assert.Equal(HttpStatusCode.Unauthorized, (await unauthenticated.PutAsJsonAsync("/api/teacher/layout", new LayoutRequest([["01"]]))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await unauthenticated.PutAsJsonAsync("/api/teacher/layout", new LayoutRequest([["01"]]))).StatusCode);
         using var teacher = await factory.Teacher();
         var cells = Enumerable.Range(0, 30).Select(r => Enumerable.Range(0, 30).Select(c => (string?)$"座位{r * 30 + c:000}").ToArray()).ToArray();
         var response = await teacher.PutAsJsonAsync("/api/teacher/layout", new LayoutRequest(cells));

@@ -58,6 +58,8 @@ try {
         }
     }
     if ($ServerIp -notin $activeIps) { throw '所选地址不是本机当前可用的网络地址，请检查网卡连接。' }
+    # A stable classroom authority is distributed once. Renewing the server leaf never replaces it.
+    & (Join-Path $PSScriptRoot 'configure-https.ps1') -ServerIp $ServerIp -Port $Port -AuthorityOnly
     $certPath = Join-Path $PSScriptRoot 'roomscope-teacher.cer'
     $renew = -not $settings -or $settings.ServerIp -ne $ServerIp -or $settings.Port -ne $Port -or -not (Test-Path $certPath) -or
         -not (Test-Path (Join-Path $PSScriptRoot 'data/teacher.pfx')) -or -not (Test-Path (Join-Path $PSScriptRoot 'data/https-password.dpapi'))
@@ -80,6 +82,8 @@ try {
     if (-not (Test-Path "Cert:\CurrentUser\Root\$($certificate.Thumbprint)")) {
         Import-Certificate -FilePath $certPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
     }
+    $rootCertificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Join-Path $PSScriptRoot 'roomscope-root.cer'))
+    if (-not (Test-Path "Cert:\CurrentUser\Root\$($rootCertificate.Thumbprint)")) { Import-Certificate -FilePath (Join-Path $PSScriptRoot 'roomscope-root.cer') -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null }
     $rule = Get-NetFirewallRule -Name "RoomScope-Teacher-$Port" -ErrorAction SilentlyContinue
     if (-not $rule -or $rule.Enabled -ne 'True') {
         Write-Host '即将申请防火墙权限，请在 Windows 管理员提示中选择允许。'

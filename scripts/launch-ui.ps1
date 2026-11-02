@@ -95,7 +95,7 @@ function Schedule-Retry([int]$Code) {
     if (-not (Test-Path -LiteralPath $tracePath)) { $state.LastError = 'Windows 未执行启动入口，可能被学校安全软件或应用运行策略阻止，请检查拦截记录。' }
     Add-Content -LiteralPath $eventsPath -Encoding UTF8 -Value "启动未完成（退出码 $Code），正在处理重试。"
     Add-Content -LiteralPath $eventsPath -Encoding UTF8 -Value $state.LastError
-    $delay = Get-StartupRetryDelay -Attempt $state.Attempt -ExitCode $Code
+    $delay = Get-StartupRetryDelay -Attempt $state.Attempt -ExitCode $Code -AtLogin:$AtLogin
     Show-Launcher
     $details.Visible = $true
     if ($delay -lt 0) {
@@ -117,6 +117,10 @@ $details.Add_Click({
     $report += @(Get-Content -LiteralPath $outputPath -Encoding UTF8 -ErrorAction SilentlyContinue)
     $report += @('', '错误记录：')
     $report += @(Get-Content -LiteralPath $errorPath -Encoding UTF8 -ErrorAction SilentlyContinue)
+    if ($Target -eq 'teacher') {
+        $report += @('', '服务详细错误：')
+        $report += @(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'data/运行错误.log') -Encoding UTF8 -Tail 100 -ErrorAction SilentlyContinue)
+    }
     $report | Set-Content -LiteralPath $reportPath -Encoding UTF8
     Start-Process notepad.exe -ArgumentList ('"' + $reportPath + '"')
 })

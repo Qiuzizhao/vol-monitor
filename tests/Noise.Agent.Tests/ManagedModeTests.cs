@@ -159,7 +159,7 @@ public sealed class ManagedModeTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Called = true;
-            Assert.Equal("https://192.168.1.10:5081/api/login", request.RequestUri!.ToString());
+            Assert.Equal("https://192.168.1.10:5081/api/maintenance/verify", request.RequestUri!.ToString());
             Assert.Equal("1", Assert.Single(request.Headers.GetValues("X-RoomScope")));
             var json = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
             Assert.Equal(expectedPassword, json.RootElement.GetProperty("password").GetString());

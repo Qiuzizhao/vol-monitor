@@ -89,7 +89,12 @@ internal static class AgentSupervisor
         using var http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false })
         { BaseAddress = AgentConfig.ValidateServer(server), Timeout = TimeSpan.FromSeconds(8) };
         http.DefaultRequestHeaders.Add("X-RoomScope", "1");
-        using var response = await http.PostAsJsonAsync("api/login", new { Password = password });
+        using var response = await http.PostAsJsonAsync("api/maintenance/verify", new { Password = password });
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            using var legacy = await http.PostAsJsonAsync("api/login", new { Password = password });
+            return legacy.StatusCode == System.Net.HttpStatusCode.OK;
+        }
         return response.StatusCode == System.Net.HttpStatusCode.OK;
     }
 
@@ -106,8 +111,9 @@ internal static class AgentSupervisor
                 timeout.CancelAfter(TimeSpan.FromSeconds(12));
                 using var reader = new StreamReader(pipe, leaveOpen: true);
                 using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-                var password = await reader.ReadLineAsync(timeout.Token);
-                var approved = !string.IsNullOrEmpty(password) && await VerifyTeacher(profile.Server, password);
+                var password = await GuardClient.ReadPassword(reader, timeout.Token);
+                var approved = !string.IsNullOrEmpty(password) && (profile.SystemGuard
+                    ? await GuardClient.RequestExit(password) : await VerifyTeacher(profile.Server, password));
                 if (approved)
                 {
                     await writer.WriteLineAsync("OK");
@@ -116,7 +122,9 @@ internal static class AgentSupervisor
                 }
                 else await writer.WriteLineAsync("DENIED");
             }
-            catch (Exception e) when (e is IOException or OperationCanceledException or HttpRequestException) { }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested) { break; }
+            catch (Exception e) when (e is IOException or OperationCanceledException or HttpRequestException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+            { try { await Task.Delay(1000, stopping.Token); } catch (OperationCanceledException) { break; } }
         }
     }
 

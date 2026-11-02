@@ -6,7 +6,7 @@ import DeviceEnrollment from './DeviceEnrollment.vue';
 import SeatLayout from './SeatLayout.vue';
 import StudentSetup from './StudentSetup.vue';
 const data=ref<Dashboard|null>(null),page=ref('live'),busy=ref(false),connected=ref(false),notice=ref('');
-const loading=ref(true),password=ref(''),loginError=ref('');
+const loading=ref(true),loginError=ref('');
 const local=['127.0.0.1','localhost','[::1]'].includes(location.hostname);
 let socket:WebSocket|null=null,retry:ReturnType<typeof setTimeout>|undefined,toastTimer:ReturnType<typeof setTimeout>|undefined;
 const online=computed(()=>data.value?.devices.filter(d=>d.status!=='offline').length??0);
@@ -45,8 +45,6 @@ function connect(){
  socket.onmessage=e=>{try{data.value=JSON.parse(e.data);connected.value=true;}catch{}};
  socket.onclose=()=>{connected.value=false;retry=setTimeout(connect,3000);};socket.onerror=()=>connected.value=false;
 }
-async function login(){await perform(async()=>{await request('/api/login','POST',{password:password.value});password.value='';await refresh();connect();});}
-async function logout(){await api('/logout','POST');location.reload();}
 async function bind(device:Device,event:Event){const seatId=(event.target as HTMLSelectElement).value;await perform(async()=>{await api(`/devices/${device.id}/seat`,'PUT',{seatId});await refresh();});}
 async function remove(device:Device){
  if(busy.value)return;
@@ -60,17 +58,17 @@ async function confirmRemove(){
 }
 async function saveLayout(cells:string[][]){if(await perform(async()=>{data.value=await api('/layout','PUT',{cells});}))editingLayout.value=false;}
 function reload(){location.reload();}
-onMounted(async()=>{try{await refresh();connect();}catch(e){loginError.value=local?'请重新启动教师端。':'';}finally{loading.value=false;}});
+onMounted(async()=>{try{await refresh();connect();}catch(e){loginError.value='暂时无法连接教师端，请检查网络后重试。';}finally{loading.value=false;}});
 onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.onclose=null;socket.close();}});
 </script>
 
 <template>
  <div v-if="loading" class="center-state">正在连接教师端……</div>
- <div v-else-if="!data" class="center-state"><h1>机房音量管理</h1><template v-if="local"><p>{{loginError}}</p><button class="button primary" @click="reload">重新连接</button></template><form v-else @submit.prevent="login"><input v-model="password" type="password" placeholder="远程访问密码" required/><button class="button primary" :disabled="busy">进入</button></form></div>
+ <div v-else-if="!data" class="center-state"><h1>机房音量管理</h1><p>{{loginError}}</p><button class="button primary" @click="reload">重新连接</button></div>
  <template v-else>
   <header class="app-header">
    <nav aria-label="主导航"><button :class="{active:page==='live'}" :aria-current="page==='live'?'page':undefined" @click="page='live'">音量监控</button><button :class="{active:page==='devices'}" :aria-current="page==='devices'?'page':undefined" @click="page='devices'">学生机管理</button></nav>
-   <span class="connection" :class="{disconnected:!connected}"><i aria-hidden="true"></i>{{connected?`在线 ${online} / ${data.devices.length}`:'正在重连'}}</span><button v-if="!local" class="text-button" @click="logout">退出登录</button>
+   <span class="connection" :class="{disconnected:!connected}"><i aria-hidden="true"></i>{{connected?`在线 ${online} / ${data.devices.length}`:'正在重连'}}</span>
   </header>
   <main>
    <div v-if="!connected" class="connection-warning" role="status">连接已中断，正在自动重连。当前显示的是上次收到的数据。</div>

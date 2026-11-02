@@ -1,12 +1,10 @@
 using System.Net;
 using System.Net.WebSockets;
-using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.RateLimiting;
 using Noise.Core;
 using Noise.Server;
@@ -15,27 +13,14 @@ Console.OutputEncoding = new System.Text.UTF8Encoding(false);
 try
 {
 var builder = WebApplication.CreateBuilder(args);
+ChineseConsoleLoggerProvider.DirectoryPath = DataDirectory(builder.Configuration, builder.Environment);
 builder.Logging.ClearProviders();
 builder.Logging.AddProvider(new ChineseConsoleLoggerProvider());
 if (string.IsNullOrEmpty(builder.Configuration["urls"])) builder.WebHost.UseUrls("http://127.0.0.1:5080");
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 8192);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow);
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o =>
-{
-    o.Cookie.Name = "RoomScope.Teacher";
-    o.Cookie.HttpOnly = true;
-    o.Cookie.SameSite = SameSiteMode.Strict;
-    o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
-    o.ExpireTimeSpan = TimeSpan.FromHours(8);
-    o.Events.OnRedirectToLogin = ctx => { ctx.Response.StatusCode = 401; return Task.CompletedTask; };
-    o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = 403; return Task.CompletedTask; };
-    o.Events.OnValidatePrincipal = ctx =>
-    {
-        if (ctx.Principal?.FindFirst("credential_version")?.Value != ctx.HttpContext.RequestServices.GetRequiredService<TeacherAccess>().CredentialVersion)
-            ctx.RejectPrincipal();
-        return Task.CompletedTask;
-    };
-});
+builder.Services.AddAuthentication("LanTeacher")
+    .AddScheme<AuthenticationSchemeOptions, LanTeacherAuthentication>("LanTeacher", _ => { });
 builder.Services.AddAuthorization();
 builder.Services.AddRateLimiter(o =>
 {
@@ -84,7 +69,7 @@ app.Use(async (ctx, next) =>
         if (!ctx.Request.IsHttps && (ip is null || !IPAddress.IsLoopback(ip)))
         { await Results.Json(new { error = "局域网接入需要 HTTPS，请配置教师机证书。" }, statusCode: 400).ExecuteAsync(ctx); return; }
         if (ctx.Request.Method is not ("GET" or "HEAD") &&
-            (ctx.Request.Path.StartsWithSegments("/api/teacher") || ctx.Request.Path == "/api/login") &&
+            (ctx.Request.Path.StartsWithSegments("/api/teacher") || ctx.Request.Path == "/api/login" || ctx.Request.Path == "/api/maintenance/verify") &&
             ctx.Request.Headers["X-RoomScope"] != "1")
         { ctx.Response.StatusCode = 403; return; }
     }
@@ -96,26 +81,20 @@ app.Use(async (ctx, next) =>
 });
 app.UseRateLimiter();
 app.UseAuthentication();
-app.Use(async (ctx, next) =>
-{
-    if (LocalTeacherAccess.IsLocal(ctx))
-        ctx.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "teacher")], "LocalTeacher"));
-    await next();
-});
 app.UseAuthorization();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.MapGet("/api/health", () => new { status = "ok", version = typeof(RoomStore).Assembly.GetName().Version!.ToString(3) });
-app.MapPost("/api/login", async (LoginRequest request, TeacherAccess access, HttpContext ctx) =>
+IResult VerifyMaintenance(LoginRequest request, TeacherAccess access)
 {
-    var credentialVersion = string.IsNullOrEmpty(request.Password) ? null : access.VerifyAndGetVersion(request.Password);
-    if (credentialVersion is null) return Results.Json(new { error = "密码不正确。" }, statusCode: 401);
-    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
-        new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "teacher"), new Claim("credential_version", credentialVersion)], CookieAuthenticationDefaults.AuthenticationScheme)));
+    if (string.IsNullOrEmpty(request.Password) || !access.Verify(request.Password))
+        return Results.Json(new { error = "密码不正确。" }, statusCode: 401);
     return Results.Ok(new { ok = true });
-}).RequireRateLimiting("auth");
+}
+app.MapPost("/api/maintenance/verify", VerifyMaintenance).RequireRateLimiting("auth");
+app.MapPost("/api/login", VerifyMaintenance).RequireRateLimiting("auth"); // Older students use this verification address; no login cookie is issued.
 
 app.MapGet("/api/enrollment", (RoomStore store) => store.EnrollmentStatus()).RequireRateLimiting("enrollment");
 app.MapPost("/api/device-requests", (EnrollmentRequest request, HttpContext ctx, RoomStore store) =>
@@ -156,7 +135,7 @@ teacher.MapPost("/student-package", (MaintenancePasswordRequest request, HttpCon
 teacher.MapGet("/dashboard", (RoomStore store) => store.Snapshot());
 teacher.MapPut("/layout", (LayoutRequest request, RoomStore store) => { store.SaveLayout(request); return store.Snapshot(); });
 teacher.MapGet("/connection", (IConfiguration configuration) => new { server = configuration["ClassroomServerUrl"] });
-teacher.MapPost("/logout", async (HttpContext ctx) => { await ctx.SignOutAsync(); return Results.Ok(); });
+teacher.MapPost("/logout", () => Results.Ok()); // Compatibility only; LAN connections have no login session.
 teacher.MapGet("/enrollment", (RoomStore store) => store.EnrollmentRequests());
 teacher.MapPost("/enrollment/open", (RoomStore store) => store.SetEnrollmentWindow(true));
 teacher.MapPost("/enrollment/close", (RoomStore store) => store.SetEnrollmentWindow(false));
@@ -213,7 +192,9 @@ app.Run();
 }
 catch (Exception e) when (e is not Microsoft.Extensions.Hosting.HostAbortedException)
 {
+    DiagnosticLog.Write(ChineseConsoleLoggerProvider.DirectoryPath, "教师服务启动或运行失败", e);
     Console.Error.WriteLine("教师服务启动或运行失败，请检查端口是否被占用、证书是否有效、当前账户是否可访问数据目录。");
+    Console.Error.WriteLine("详细原因已保存到：" + DiagnosticLog.PathFor(ChineseConsoleLoggerProvider.DirectoryPath));
     Environment.ExitCode = 1;
 }
 

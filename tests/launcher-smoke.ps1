@@ -43,6 +43,7 @@ try {
     if ([int](Get-Content (Join-Path $fixture 'attempts.txt')) -ne 2) { throw 'Expected exactly one automatic retry.' }
     . (Join-Path $repo 'scripts/console.ps1')
     if ((Get-StartupRetryDelay 1 1223) -ne -1 -or (Get-StartupRetryDelay 3 1) -ne -1) { throw 'Cancellation or retry limit is not respected.' }
+    if ((Get-StartupRetryDelay 3 1 -AtLogin) -ne 8 -or (Get-StartupRetryDelay 20 1 -AtLogin) -ne 30 -or (Get-StartupRetryDelay 3 1223 -AtLogin) -ne -1) { throw 'Login startup must continue retrying unless authorization was cancelled.' }
     Write-Host '通过：不会误把旧版健康响应当作新版就绪；失败后自动重试，新版就绪后继续。'
 } finally {
     if ($launcher -and -not $launcher.HasExited) { Stop-Process -Id $launcher.Id -ErrorAction SilentlyContinue }

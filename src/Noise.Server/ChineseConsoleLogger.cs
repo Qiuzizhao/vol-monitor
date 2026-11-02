@@ -4,6 +4,7 @@ namespace Noise.Server;
 // exception object, request body or credentials to the operator's launch window.
 public sealed class ChineseConsoleLoggerProvider : ILoggerProvider
 {
+    public static string DirectoryPath { get; set; } = Path.Combine(AppContext.BaseDirectory, "data");
     public ILogger CreateLogger(string categoryName) => new ChineseConsoleLogger(categoryName);
     public void Dispose() { }
 
@@ -15,6 +16,7 @@ public sealed class ChineseConsoleLoggerProvider : ILoggerProvider
             Func<TState, Exception?, string> formatter)
         {
             if (!IsEnabled(level)) return;
+            Noise.Core.DiagnosticLog.Write(DirectoryPath, category, exception, formatter(state, exception));
             var severity = level >= LogLevel.Error ? "错误" : "提示";
             var message = category.Contains(nameof(RoomTicker), StringComparison.Ordinal)
                 ? "区域数据统计未完成，请检查数据目录权限和磁盘空间。"
