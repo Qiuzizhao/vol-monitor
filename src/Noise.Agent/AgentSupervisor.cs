@@ -85,7 +85,7 @@ internal static class AgentSupervisor
 
     internal static async Task<bool> VerifyTeacher(string server, string password, HttpMessageHandler? handler = null)
     {
-        if (password.Length is 0 or > 256) return false;
+        if (password.Length == 0) return false;
         using var http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false })
         { BaseAddress = AgentConfig.ValidateServer(server), Timeout = TimeSpan.FromSeconds(8) };
         http.DefaultRequestHeaders.Add("X-RoomScope", "1");
@@ -106,15 +106,8 @@ internal static class AgentSupervisor
                 timeout.CancelAfter(TimeSpan.FromSeconds(12));
                 using var reader = new StreamReader(pipe, leaveOpen: true);
                 using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-                // A bounded input avoids accepting an unlimited stream from another local process.
-                var buffer = new char[257]; var length = 0;
-                while (length < buffer.Length)
-                {
-                    var count = await reader.ReadAsync(buffer.AsMemory(length, 1), timeout.Token);
-                    if (count == 0 || buffer[length] == '\n') break;
-                    length++;
-                }
-                var approved = length <= 256 && await VerifyTeacher(profile.Server, new string(buffer, 0, length));
+                var password = await reader.ReadLineAsync(timeout.Token);
+                var approved = !string.IsNullOrEmpty(password) && await VerifyTeacher(profile.Server, password);
                 if (approved)
                 {
                     await writer.WriteLineAsync("OK");

@@ -17,7 +17,7 @@ public sealed class MaintenanceTests
         teacher.DefaultRequestHeaders.Add("X-RoomScope", "1");
         var status = await teacher.GetFromJsonAsync<JsonElement>("/api/teacher/maintenance");
         Assert.False(status.GetProperty("configured").GetBoolean());
-        Assert.Equal(HttpStatusCode.BadRequest, (await teacher.PutAsJsonAsync("/api/teacher/maintenance", new { password = "short", confirmation = "short" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await teacher.PutAsJsonAsync("/api/teacher/maintenance", new { password = "", confirmation = "" })).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await teacher.PutAsJsonAsync("/api/teacher/maintenance", new { password = "new-password-123", confirmation = "does-not-match" })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await teacher.PostAsJsonAsync("/api/login", new { password = "test-password-123" })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await teacher.PutAsJsonAsync("/api/teacher/maintenance", new { password = "new-password-123", confirmation = "new-password-123" })).StatusCode);
@@ -73,6 +73,26 @@ public sealed class MaintenanceTests
         Assert.False(access.Verify("test-password-123"));
         Assert.Equal(HttpStatusCode.OK, (await teacher.PostAsJsonAsync("/api/teacher/student-package", new { })).StatusCode);
         Assert.True(access.Verify("chosen-password-123"));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(9)]
+    [InlineData(300)]
+    public async Task PackageAndPasswordChangesAcceptAnyNonemptyLength(int length)
+    {
+        using var factory = new AppFactory(IPAddress.Loopback, packageFixture: true); using var teacher = factory.Client();
+        teacher.DefaultRequestHeaders.Add("X-RoomScope", "1");
+        var password = new string('1', length);
+        Assert.Equal(HttpStatusCode.OK, (await teacher.PostAsJsonAsync("/api/teacher/student-package", new { password, confirmation = password })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await teacher.PostAsJsonAsync("/api/login", new { password })).StatusCode);
+        var next = new string('密', length);
+        Assert.Equal(HttpStatusCode.OK, (await teacher.PutAsJsonAsync("/api/teacher/maintenance", new { password = next, confirmation = next })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await teacher.PostAsJsonAsync("/api/login", new { password })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await teacher.PostAsJsonAsync("/api/login", new { password = next })).StatusCode);
+        var reloaded = new TeacherAccess(factory.DataPath, null);
+        Assert.True(reloaded.Verify(next)); Assert.False(reloaded.Verify(password));
     }
 
     [Fact]

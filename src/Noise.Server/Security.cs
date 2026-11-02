@@ -25,7 +25,6 @@ public sealed class TeacherAccess
         else
         {
             password = string.IsNullOrEmpty(password) ? Convert.ToHexString(RandomNumberGenerator.GetBytes(10)) : password;
-            if (password.Length < 10) throw new InvalidOperationException("维护密码至少需要 10 位。");
             salt = RandomNumberGenerator.GetBytes(16);
             hash = Derive(password, salt);
             File.WriteAllText(file, JsonSerializer.Serialize(new AuthFile(Convert.ToBase64String(salt), Convert.ToBase64String(hash))));
@@ -43,7 +42,7 @@ public sealed class TeacherAccess
     }
     public string? VerifyAndGetVersion(string password)
     {
-        lock (gate) return password.Length <= 256 && CryptographicOperations.FixedTimeEquals(hash, Derive(password, salt))
+        lock (gate) return CryptographicOperations.FixedTimeEquals(hash, Derive(password, salt))
             ? Convert.ToHexString(salt) : null;
     }
     public void SetPassword(string? password, string? confirmation)
@@ -69,8 +68,8 @@ public sealed class TeacherAccess
     }
     public static void ValidatePassword(string? password, string? confirmation)
     {
-        if (string.IsNullOrWhiteSpace(password) || password.Length is < 10 or > 256 || password.Any(char.IsControl))
-            throw new ArgumentException("维护密码需要 10～256 位，不能包含换行等控制字符。");
+        if (string.IsNullOrEmpty(password)) throw new ArgumentException("请输入维护密码。");
+        if (password.Any(char.IsControl)) throw new ArgumentException("维护密码不能包含换行等控制字符。");
         if (password != confirmation) throw new ArgumentException("两次输入的密码不一致。");
     }
     private static byte[] Derive(string password, byte[] salt) =>

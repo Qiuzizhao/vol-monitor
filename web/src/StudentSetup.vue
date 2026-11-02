@@ -8,7 +8,7 @@ const showPassword=ref(false),showConfirmation=ref(false);
 async function submit(){
  if(busy.value||loading.value)return;
  const needsPassword=props.mode==='password'||!configured.value;
- if(needsPassword&&(password.value.length<10||password.value.length>256)){error.value='密码需要 10～256 位。';return;}
+ if(needsPassword&&!password.value){error.value='请输入维护密码。';return;}
  if(needsPassword&&password.value!==confirmation.value){error.value='两次输入的密码不一致。';return;}
  busy.value=true;error.value='';
  try{
@@ -33,8 +33,8 @@ onMounted(async()=>{try{configured.value=(await props.api('/maintenance')).confi
   <div class="password-fields">
    <p v-if="loading">正在连接……</p>
    <template v-else-if="mode==='password'||!configured">
-    <div class="password-field"><label for="maintenance-new-password">新密码</label><div class="password-entry"><input id="maintenance-new-password" v-model="password" :type="showPassword?'text':'password'" autocomplete="new-password" minlength="10" maxlength="256" placeholder="至少 10 位" :disabled="busy" required/><button type="button" :aria-label="showPassword?'隐藏新密码':'显示新密码'" :title="showPassword?'隐藏新密码':'显示新密码'" :aria-pressed="showPassword" aria-controls="maintenance-new-password" @click="showPassword=!showPassword" :disabled="busy"><EyeOff v-if="showPassword" :size="18" aria-hidden="true"/><Eye v-else :size="18" aria-hidden="true"/></button></div></div>
-    <div class="password-field"><label for="maintenance-confirm-password">确认密码</label><div class="password-entry"><input id="maintenance-confirm-password" v-model="confirmation" :type="showConfirmation?'text':'password'" autocomplete="new-password" minlength="10" maxlength="256" :disabled="busy" required/><button type="button" :aria-label="showConfirmation?'隐藏确认密码':'显示确认密码'" :title="showConfirmation?'隐藏确认密码':'显示确认密码'" :aria-pressed="showConfirmation" aria-controls="maintenance-confirm-password" @click="showConfirmation=!showConfirmation" :disabled="busy"><EyeOff v-if="showConfirmation" :size="18" aria-hidden="true"/><Eye v-else :size="18" aria-hidden="true"/></button></div></div>
+    <div class="password-field"><label for="maintenance-new-password">新密码</label><div class="password-entry"><input id="maintenance-new-password" v-model="password" :type="showPassword?'text':'password'" autocomplete="new-password" placeholder="输入密码" :disabled="busy" required/><button type="button" :aria-label="showPassword?'隐藏新密码':'显示新密码'" :title="showPassword?'隐藏新密码':'显示新密码'" :aria-pressed="showPassword" aria-controls="maintenance-new-password" @click="showPassword=!showPassword" :disabled="busy"><EyeOff v-if="showPassword" :size="18" aria-hidden="true"/><Eye v-else :size="18" aria-hidden="true"/></button></div></div>
+    <div class="password-field"><label for="maintenance-confirm-password">确认密码</label><div class="password-entry"><input id="maintenance-confirm-password" v-model="confirmation" :type="showConfirmation?'text':'password'" autocomplete="new-password" :disabled="busy" required/><button type="button" :aria-label="showConfirmation?'隐藏确认密码':'显示确认密码'" :title="showConfirmation?'隐藏确认密码':'显示确认密码'" :aria-pressed="showConfirmation" aria-controls="maintenance-confirm-password" @click="showConfirmation=!showConfirmation" :disabled="busy"><EyeOff v-if="showConfirmation" :size="18" aria-hidden="true"/><Eye v-else :size="18" aria-hidden="true"/></button></div></div>
     <p>用于退出学生端，对所有学生机生效。</p>
    </template>
    <p v-else>使用当前维护密码。</p>

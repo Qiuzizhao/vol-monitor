@@ -55,6 +55,19 @@ public sealed class ManagedModeTests
         Assert.True(handler.Called);
     }
 
+    [Theory]
+    [InlineData("1")]
+    [InlineData("中文")]
+    [InlineData("")]
+    [InlineData(null)]
+    public async Task MaintenanceDoesNotImposeAPasswordLength(string? password)
+    {
+        password ??= new string('p', 300);
+        var handler = new LoginHandler(HttpStatusCode.OK, password);
+        Assert.Equal(password.Length > 0, await AgentSupervisor.VerifyTeacher("https://192.168.1.10:5081", password, handler));
+        Assert.Equal(password.Length > 0, handler.Called);
+    }
+
     [Fact]
     public void StudentCloseHidesToTrayWithoutTaskbarEntry()
     {
@@ -140,7 +153,7 @@ public sealed class ManagedModeTests
         if (error is not null) throw error;
     }
 
-    private sealed class LoginHandler(HttpStatusCode status) : HttpMessageHandler
+    private sealed class LoginHandler(HttpStatusCode status, string expectedPassword = "teacher-test-password") : HttpMessageHandler
     {
         public bool Called { get; private set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -149,7 +162,7 @@ public sealed class ManagedModeTests
             Assert.Equal("https://192.168.1.10:5081/api/login", request.RequestUri!.ToString());
             Assert.Equal("1", Assert.Single(request.Headers.GetValues("X-RoomScope")));
             var json = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
-            Assert.Equal("teacher-test-password", json.RootElement.GetProperty("password").GetString());
+            Assert.Equal(expectedPassword, json.RootElement.GetProperty("password").GetString());
             return new HttpResponseMessage(status);
         }
     }

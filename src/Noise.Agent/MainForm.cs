@@ -250,7 +250,7 @@ public sealed class MainForm : Form
     {
         using var dialog = new Form { Text = "退出学生端", ClientSize = new Size(390, 155), StartPosition = Visible ? FormStartPosition.CenterParent : FormStartPosition.CenterScreen, FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false };
         var label = new Label { Text = "维护密码", AutoSize = true, Location = new Point(16, 15) };
-        var password = new TextBox { UseSystemPasswordChar = true, MaxLength = 256, Location = new Point(16, 48), Width = 355 };
+        var password = new TextBox { UseSystemPasswordChar = true, MaxLength = 0, Location = new Point(16, 48), Width = 355 };
         var confirm = new Button { Text = "验证并退出", DialogResult = DialogResult.OK, Location = new Point(245, 98), Width = 125 };
         dialog.Controls.AddRange([label, password, confirm]); dialog.AcceptButton = confirm;
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
