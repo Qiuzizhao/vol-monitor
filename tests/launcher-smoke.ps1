@@ -1,4 +1,5 @@
-﻿# Simulate a setup step that fails once, then becomes available after permission
+﻿param([switch]$AtLogin)
+# Simulate a setup step that fails once, then becomes available after permission
 # takes effect. No certificates, firewall rules or startup entries are changed.
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -36,7 +37,9 @@ try {
 } finally { $listener.Stop() }
 '@
     [IO.File]::WriteAllText((Join-Path $fixture 'start-teacher.ps1'), $worker, [Text.UTF8Encoding]::new($true))
-    $launcher = Start-Process powershell.exe -WindowStyle Hidden -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $fixture 'launch-ui.ps1') + '" -Target teacher') -PassThru
+    $launchArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $fixture 'launch-ui.ps1') + '" -Target teacher'
+    if ($AtLogin) { $launchArguments += ' -AtLogin' }
+    $launcher = Start-Process powershell.exe -WindowStyle Hidden -ArgumentList $launchArguments -PassThru
     $null = $launcher.Handle
     if (-not $launcher.WaitForExit(25000)) { throw 'Launcher did not resume after the setup permission became available.' }
     if ($launcher.ExitCode -ne 0 -or -not (Test-Path (Join-Path $fixture 'ready.txt'))) { throw 'Launcher did not finish successfully.' }

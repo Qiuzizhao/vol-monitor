@@ -28,7 +28,7 @@ try {
         } catch { }
         if (-not $ready) { throw '教师服务正在启动，尚未就绪，稍后将自动重试。' }
         Write-Host '教师服务已在运行，正在打开页面。'
-        if (-not $AtLogin -and -not $FromLauncher -and (Test-Path $settingsPath)) {
+        if (-not $FromLauncher -and (Test-Path $settingsPath)) {
             $current = Get-Content $settingsPath -Raw | ConvertFrom-Json
             Start-Process 'http://127.0.0.1:5080'
         }
@@ -105,7 +105,7 @@ try {
     New-ItemProperty -Path $startupKey -Name RoomScopeTeacher -Value $startupCommand -PropertyType String -Force | Out-Null
     Write-Host '教师页面点「学生机管理」→「生成学生端」，设置维护密码并下载安装包。'
     # The local dashboard needs no password; student connections still use HTTPS.
-    if (-not $AtLogin -and -not $FromLauncher) { $browserJob = Start-Job -ArgumentList 'http://127.0.0.1:5080',$PSScriptRoot -ScriptBlock {
+    if (-not $FromLauncher) { $browserJob = Start-Job -ArgumentList 'http://127.0.0.1:5080',$PSScriptRoot -ScriptBlock {
         param($url, $directory)
         for ($i = 0; $i -lt 60; $i++) {
             try {

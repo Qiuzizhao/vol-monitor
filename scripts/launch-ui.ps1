@@ -87,7 +87,7 @@ function Start-Worker {
 }
 function Finish-Launch {
     $state.Done = $true; $timer.Stop()
-    if ($Target -eq 'teacher' -and -not $AtLogin) { Start-Process 'http://127.0.0.1:5080' }
+    if ($Target -eq 'teacher') { Start-Process 'http://127.0.0.1:5080' }
     $form.Close()
 }
 function Schedule-Retry([int]$Code) {
