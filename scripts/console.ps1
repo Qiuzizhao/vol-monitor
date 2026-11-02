@@ -1,8 +1,13 @@
 ﻿# UTF-8 BOM on this file and all translated scripts supports Windows PowerShell 5.1.
 $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-[Console]::OutputEncoding = $OutputEncoding
+# Hidden processes on some Windows installations have no usable console handle.
+# Console encoding is optional and must not abort startup before error handlers exist.
+try { [Console]::OutputEncoding = $OutputEncoding } catch { }
 $ProgressPreference = 'SilentlyContinue'
 function Write-StartupError($Record) {
+    if ($env:RoomScopeStartupTrace) {
+        try { [IO.File]::AppendAllText($env:RoomScopeStartupTrace, ($Record | Out-String) + "`r`n" + $Record.ScriptStackTrace + "`r`n", [Text.UTF8Encoding]::new($true)) } catch { }
+    }
     $message = $Record.Exception.Message
     if ($message -match '^[\u4e00-\u9fff]') { Write-Host $message -ForegroundColor Red; return }
     $friendly = switch -Regex ($Record.Exception.GetType().Name) {
@@ -49,7 +54,7 @@ function Get-StartupRetryDelay([int]$Attempt, [int]$ExitCode) {
 
 function Get-StartupFailureMessage([string]$OutputPath, [string]$ErrorPath, [int]$ExitCode) {
     $outputLines = @(Get-Content -LiteralPath $OutputPath -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-    $friendly = @($outputLines | Where-Object { $_.Trim() -match '^[\u4e00-\u9fff]' })
+    $friendly = @($outputLines | ForEach-Object { $_ -replace '^\d{2}:\d{2}:\d{2} ', '' } | Where-Object { $_.Trim() -match '^[\u4e00-\u9fff]' -and $_ -notmatch '^(启动入口已执行|开始执行：|启动脚本结束)' })
     if ($friendly.Count) { return $friendly[-1].Trim() }
     $errors = @(Get-Content -LiteralPath $ErrorPath -Encoding UTF8 -ErrorAction SilentlyContinue) -join "`n"
     if ($errors -match 'ParserError|Unexpected token|解析错误|无法解析|意外的标记') { return '启动脚本无法解析，请完整解压新版运行包，不要混用不同版本的程序文件。' }

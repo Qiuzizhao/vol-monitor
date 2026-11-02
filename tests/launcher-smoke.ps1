@@ -7,6 +7,7 @@ $launcher = $null
 try {
     New-Item -ItemType Directory -Path $fixture | Out-Null
     Copy-Item (Join-Path $repo 'scripts/console.ps1') $fixture
+    Copy-Item (Join-Path $repo 'scripts/startup-worker.ps1') $fixture
     $source = [IO.File]::ReadAllText((Join-Path $repo 'scripts/launch-ui.ps1'))
     $source = $source.Replace("`$logRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'RoomScope/Startup'", "`$logRoot = Join-Path `$PSScriptRoot 'logs'")
     $source = $source.Replace('127.0.0.1:5080', '127.0.0.1:15981')

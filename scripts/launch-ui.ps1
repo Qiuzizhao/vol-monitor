@@ -38,6 +38,7 @@ $outputPath = Join-Path $logRoot "$Target-$runId.log"
 $errorPath = Join-Path $logRoot "$Target-$runId-error.log"
 $eventsPath = Join-Path $logRoot "$Target-$runId-events.log"
 $reportPath = Join-Path $logRoot "$Target-$runId-details.txt"
+$tracePath = Join-Path $logRoot "$Target-$runId-worker.log"
 $http = New-Object Net.Http.HttpClient
 $http.Timeout = [TimeSpan]::FromSeconds(2)
 $timer = New-Object Windows.Forms.Timer
@@ -55,10 +56,13 @@ function Start-Worker {
     $heading.Text = '正在检查并启动……'
     $status.Text = '正在检查程序文件、网络和证书；需要系统授权时会弹出提示。'
     $progress.Visible = $true; $retry.Visible = $false
-    $scriptPath = Join-Path $PSScriptRoot "start-$Target.ps1"
-    $arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $scriptPath + '" -FromLauncher'
+    $scriptPath = Join-Path $PSScriptRoot 'startup-worker.ps1'
+    if (-not (Test-Path -LiteralPath $scriptPath)) { throw '缺少启动入口，请完整解压新版运行包。' }
+    $hostPath = Join-Path $PSHOME 'powershell.exe'
+    Add-Content -LiteralPath $eventsPath -Encoding UTF8 -Value ('启动主机：' + $hostPath)
+    $arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $scriptPath + '" -Target ' + $Target + ' -TracePath "' + $tracePath + '"'
     if ($AtLogin) { $arguments += ' -AtLogin' }
-    $state.Worker = Start-Process powershell.exe -WindowStyle Hidden -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -RedirectStandardOutput $outputPath -RedirectStandardError $errorPath -PassThru
+    $state.Worker = Start-Process -FilePath $hostPath -WindowStyle Hidden -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -RedirectStandardOutput $outputPath -RedirectStandardError $errorPath -PassThru
     # Retain the process handle on Windows PowerShell so ExitCode remains
     # available after the child exits (otherwise it can incorrectly be null).
     $null = $state.Worker.Handle
@@ -78,7 +82,8 @@ function Finish-Launch {
     $form.Close()
 }
 function Schedule-Retry([int]$Code) {
-    $state.LastError = Get-StartupFailureMessage -OutputPath $outputPath -ErrorPath $errorPath -ExitCode $Code
+    $state.LastError = Get-StartupFailureMessage -OutputPath $tracePath -ErrorPath $errorPath -ExitCode $Code
+    if (-not (Test-Path -LiteralPath $tracePath)) { $state.LastError = 'Windows 未执行启动入口，可能被学校安全软件或应用运行策略阻止，请检查拦截记录。' }
     Add-Content -LiteralPath $eventsPath -Encoding UTF8 -Value "启动未完成（退出码 $Code），正在处理重试。"
     Add-Content -LiteralPath $eventsPath -Encoding UTF8 -Value $state.LastError
     $delay = Get-StartupRetryDelay -Attempt $state.Attempt -ExitCode $Code
@@ -99,6 +104,7 @@ $details.Add_Click({
     $report = @(('启动原因：' + $state.LastError), ('程序目录：' + $PSScriptRoot), '', '启动过程：')
     $report += @(Get-Content -LiteralPath $eventsPath -Encoding UTF8 -ErrorAction SilentlyContinue)
     $report += @('', '程序输出：')
+    $report += @(Get-Content -LiteralPath $tracePath -Encoding UTF8 -ErrorAction SilentlyContinue)
     $report += @(Get-Content -LiteralPath $outputPath -Encoding UTF8 -ErrorAction SilentlyContinue)
     $report += @('', '错误记录：')
     $report += @(Get-Content -LiteralPath $errorPath -Encoding UTF8 -ErrorAction SilentlyContinue)
@@ -129,8 +135,8 @@ $timer.Add_Tick({
         if ($state.Worker.HasExited) {
             if (-not $state.ExitedAt) { $state.ExitedAt = Get-Date }
             if (((Get-Date) - $state.ExitedAt).TotalSeconds -gt 5) { Schedule-Retry 1 }
-        } elseif (Test-Path $outputPath) {
-            $lines = @(Get-Content -LiteralPath $outputPath -Encoding UTF8 -Tail 4 -ErrorAction SilentlyContinue)
+        } elseif (Test-Path $tracePath) {
+            $lines = @(Get-Content -LiteralPath $tracePath -Encoding UTF8 -Tail 4 -ErrorAction SilentlyContinue)
             if ($lines.Count) { $status.Text = $lines[-1] }
         }
     } catch {
