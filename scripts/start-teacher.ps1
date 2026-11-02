@@ -9,6 +9,10 @@ $ownsInstance = $false
 $startupExitCode = 1
 try {
     if (-not (Test-Path './Noise.Server.exe')) { throw '请先完整解压教师端运行包，再双击启动入口。' }
+    $takeover = Join-Path $PSScriptRoot 'stop-teacher.ps1'
+    if (-not (Test-Path -LiteralPath $takeover)) { throw '缺少自动接管组件，请完整解压新版教师端运行包。' }
+    & $takeover -ForStartup -CurrentDirectory $PSScriptRoot
+    if ($env:RoomScopeStartupTrace) { [IO.File]::WriteAllText(($env:RoomScopeStartupTrace + '.ready'), 'ready') }
     $settingsPath = Join-Path $PSScriptRoot 'data/https.json'
     $created = $false
     $instance = [Threading.Mutex]::new($true, ('Local\RoomScope.Teacher.' + [Security.Principal.WindowsIdentity]::GetCurrent().User.Value), [ref]$created)
@@ -22,7 +26,7 @@ try {
             $health = Invoke-RestMethod 'http://127.0.0.1:5080/api/health' -TimeoutSec 2
             $ready = $health.status -eq 'ok'
         } catch { }
-        if (-not $ready) { throw '旧版教师启动进程仍在运行，但服务没有就绪。请先运行「关闭旧版教师端.cmd」，再启动新版。' }
+        if (-not $ready) { throw '教师服务正在启动，尚未就绪，稍后将自动重试。' }
         Write-Host '教师服务已在运行，正在打开页面。'
         if (-not $AtLogin -and -not $FromLauncher -and (Test-Path $settingsPath)) {
             $current = Get-Content $settingsPath -Raw | ConvertFrom-Json

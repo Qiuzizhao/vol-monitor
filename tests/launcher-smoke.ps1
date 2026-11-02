@@ -19,11 +19,14 @@ Set-Content (Join-Path $PSScriptRoot 'worker.pid') $PID
 $countFile = Join-Path $PSScriptRoot 'attempts.txt'
 $count = if (Test-Path $countFile) { [int](Get-Content $countFile) + 1 } else { 1 }
 Set-Content $countFile $count
-if ($count -eq 1) { exit 1 }
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 15981)
 $listener.Start()
+if ($count -gt 1) { [IO.File]::WriteAllText(($env:RoomScopeStartupTrace + '.ready'), 'ready') }
+$oldServiceUntil = (Get-Date).AddSeconds(3)
 try {
     while ($true) {
+        if ($count -eq 1 -and (Get-Date) -gt $oldServiceUntil) { exit 1 }
+        if (-not $listener.Pending()) { Start-Sleep -Milliseconds 50; continue }
         $client = $listener.AcceptTcpClient()
         try {
             $bytes = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 200 OK`r`nContent-Length: 2`r`nConnection: close`r`n`r`n{}")
@@ -40,7 +43,7 @@ try {
     if ([int](Get-Content (Join-Path $fixture 'attempts.txt')) -ne 2) { throw 'Expected exactly one automatic retry.' }
     . (Join-Path $repo 'scripts/console.ps1')
     if ((Get-StartupRetryDelay 1 1223) -ne -1 -or (Get-StartupRetryDelay 3 1) -ne -1) { throw 'Cancellation or retry limit is not respected.' }
-    Write-Host '通过：首次失败后自动重试，服务就绪后自动继续，取消授权不连续弹窗。'
+    Write-Host '通过：不会误把旧版健康响应当作新版就绪；失败后自动重试，新版就绪后继续。'
 } finally {
     if ($launcher -and -not $launcher.HasExited) { Stop-Process -Id $launcher.Id -ErrorAction SilentlyContinue }
     $workerPidFile = Join-Path $fixture 'worker.pid'

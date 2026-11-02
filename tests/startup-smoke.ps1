@@ -15,6 +15,7 @@ try {
     # A leftover named mutex with no owner must not prevent teacher startup.
     $staleMutex = [Threading.Mutex]::new($false, ($mutexPrefix + [Security.Principal.WindowsIdentity]::GetCurrent().User.Value))
     Copy-Item (Join-Path $repo 'scripts/console.ps1') $teacherDirectory
+    Set-Content (Join-Path $teacherDirectory 'stop-teacher.ps1') 'param([switch]$ForStartup, [string]$CurrentDirectory); if (-not $ForStartup -or $CurrentDirectory -ne $PSScriptRoot) { throw "Invalid takeover parameters" }; $global:automaticTakeoverCalled = $true'
     Set-Content (Join-Path $teacherDirectory 'Noise.Server.exe') 'placeholder'
     Set-Content (Join-Path $teacherDirectory 'roomscope-teacher.cer') 'public certificate fixture'
     Set-Content (Join-Path $teacherDirectory 'data/teacher.pfx') 'PRIVATE KEY - must never enter student ZIP'
@@ -59,6 +60,7 @@ try {
     }
     & (Join-Path $teacherDirectory 'start-teacher.ps1')
     if (-not $global:teacherStarted) { throw 'Teacher service was not started.' }
+    if (-not $global:automaticTakeoverCalled) { throw 'Teacher startup did not automatically check the old version.' }
     if (-not $global:teacherStartupRegistered) { throw 'Teacher login startup was not registered.' }
     if (Test-Path (Join-Path (Split-Path $teacherDirectory -Parent) '学生端安装包.zip')) { throw '启动时不应绕过页面设置密码自动生成学生端。' }
     if (-not (Test-Path (Join-Path $teacherDirectory 'student-template.zip'))) { throw '学生端模板丢失。' }

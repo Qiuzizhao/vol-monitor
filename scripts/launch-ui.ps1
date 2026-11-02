@@ -1,6 +1,14 @@
 ﻿param([ValidateSet('teacher','student')][string]$Target = 'teacher', [switch]$AtLogin)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'console.ps1')
+$launcherInstance = $null
+if ($Target -eq 'teacher') {
+    $digest = [Security.Cryptography.SHA256]::Create()
+    try { $folderKey = [BitConverter]::ToString($digest.ComputeHash([Text.Encoding]::UTF8.GetBytes($PSScriptRoot.ToUpperInvariant()))).Replace('-', '') } finally { $digest.Dispose() }
+    $newLauncher = $false
+    $launcherInstance = [Threading.Mutex]::new($true, ('Local\RoomScope.TeacherLauncher.' + $folderKey), [ref]$newLauncher)
+    if (-not $newLauncher) { $launcherInstance.Dispose(); exit 0 }
+}
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Net.Http
 [Windows.Forms.Application]::EnableVisualStyles()
@@ -51,6 +59,7 @@ function Start-Worker {
     try {
     if ($state.Worker -and -not $state.Worker.HasExited) { $retry.Visible = $false; return }
     $state.Attempt++
+    Remove-Item -LiteralPath ($tracePath + '.ready') -ErrorAction SilentlyContinue
     Add-Content -LiteralPath $eventsPath -Encoding UTF8 -Value "第 $($state.Attempt) 次启动。"
     $state.NextTry = $null; $state.Probe = $null; $state.ExitedAt = $null
     $heading.Text = '正在检查并启动……'
@@ -122,8 +131,9 @@ $timer.Add_Tick({
             Schedule-Retry $state.Worker.ExitCode; return
         }
         if ($Target -eq 'student') { if ($state.Worker.HasExited) { Finish-Launch }; return }
-        if (-not $state.Probe) { $state.Probe = $http.GetAsync('http://127.0.0.1:5080/api/health') }
-        if ($state.Probe.IsCompleted) {
+        # An old version can still answer health checks while the worker replaces it.
+        if (-not $state.Probe -and (Test-Path -LiteralPath ($tracePath + '.ready'))) { $state.Probe = $http.GetAsync('http://127.0.0.1:5080/api/health') }
+        if ($state.Probe -and $state.Probe.IsCompleted) {
             if ($state.Probe.Status -eq 'RanToCompletion') {
                 $response = $state.Probe.Result
                 $ready = $response.IsSuccessStatusCode
@@ -153,4 +163,4 @@ $form.Add_FormClosing({ param($sender, $eventArgs)
 })
 $form.Add_Shown({ Start-Worker; $timer.Start() })
 try { [Windows.Forms.Application]::Run($form) }
-finally { $timer.Dispose(); $http.Dispose(); $form.Dispose() }
+finally { $timer.Dispose(); $http.Dispose(); $form.Dispose(); if ($launcherInstance) { $launcherInstance.ReleaseMutex(); $launcherInstance.Dispose() } }
