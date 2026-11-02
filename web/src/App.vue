@@ -10,6 +10,14 @@ const loading=ref(true),password=ref(''),loginError=ref('');
 const local=['127.0.0.1','localhost','[::1]'].includes(location.hostname);
 let socket:WebSocket|null=null,retry:ReturnType<typeof setTimeout>|undefined,toastTimer:ReturnType<typeof setTimeout>|undefined;
 const online=computed(()=>data.value?.devices.filter(d=>d.status!=='offline').length??0);
+const offline=computed(()=>data.value?.devices.filter(d=>d.status==='offline').length??0);
+const deviceSearch=ref(''),deviceFilter=ref('all');
+const seatLabel=(id:string|null)=>data.value?.seats.find(s=>s.id===id)?.label??'';
+const seatOrder=new Intl.Collator('zh-CN',{numeric:true});
+const visibleDevices=computed(()=>[...(data.value?.devices??[])].filter(d=>
+ (deviceFilter.value==='all'||(deviceFilter.value==='offline'?d.status==='offline':d.status!=='offline'))&&
+ `${d.name} ${seatLabel(d.seatId)}`.toLowerCase().includes(deviceSearch.value.trim().toLowerCase()))
+ .sort((a,b)=>seatOrder.compare(seatLabel(a.seatId)||'\uffff',seatLabel(b.seatId)||'\uffff')));
 const rows=computed(()=>Array.from({length:data.value?.layoutRows??6},(_,i)=>i+1));
 const columns=computed(()=>data.value?.layoutColumns??6);
 const editingLayout=ref(false);
@@ -19,7 +27,7 @@ const removingSeat=computed(()=>data.value?.seats.find(s=>s.id===removingDevice.
 let removeTrigger:HTMLButtonElement|null=null;
 const seatMap=computed(()=>new Map(data.value?.seats.map(s=>[`${s.row}:${s.column}`,s])));
 const seatAt=(row:number,col:number)=>seatMap.value.get(`${row}:${col}`);
-const statuses:Record<string,string>={ok:'采集中',unbound:'未分配座位',offline:'离线',stale:'连接中断',idle:'待机',error:'麦克风异常',uncalibrated:'待校准',blocked:'请更新客户端',no_signal:'麦克风无输入',calibrating:'校准中'};
+const statuses:Record<string,string>={ok:'在线',unbound:'未分配座位',offline:'离线',stale:'连接中断',idle:'连接中',error:'麦克风异常',uncalibrated:'连接中',blocked:'请更新客户端',no_signal:'无输入',calibrating:'连接中'};
 const score=(n:number|null|undefined)=>n==null?'—':n>0&&n<10?n.toFixed(1):Math.round(n);
 const tone=(n:number|null)=>n===null?'none':n>=70?'loud':n>=40?'medium':'quiet';
 function toast(text:string){notice.value=text;clearTimeout(toastTimer);toastTimer=setTimeout(()=>notice.value='',4500);}
@@ -57,16 +65,30 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
 </script>
 
 <template>
- <div v-if="loading" class="center-state">正在连接……</div>
+ <div v-if="loading" class="center-state">正在连接教师端……</div>
  <div v-else-if="!data" class="center-state"><h1>机房音量管理</h1><template v-if="local"><p>{{loginError}}</p><button class="button primary" @click="reload">重新连接</button></template><form v-else @submit.prevent="login"><input v-model="password" type="password" placeholder="远程访问密码" required/><button class="button primary" :disabled="busy">进入</button></form></div>
  <template v-else>
-  <header class="app-header"><nav aria-label="主导航"><button :class="{active:page==='live'}" @click="page='live'">监控</button><button :class="{active:page==='devices'}" @click="page='devices'">学生机</button></nav><span class="connection">{{connected?`在线 ${online} / ${data.devices.length}`:'连接中断'}}</span><button v-if="!local" class="text-button" @click="logout">退出登录</button></header>
+  <header class="app-header">
+   <nav aria-label="主导航"><button :class="{active:page==='live'}" :aria-current="page==='live'?'page':undefined" @click="page='live'">音量监控</button><button :class="{active:page==='devices'}" :aria-current="page==='devices'?'page':undefined" @click="page='devices'">学生机管理</button></nav>
+   <span class="connection" :class="{disconnected:!connected}"><i aria-hidden="true"></i>{{connected?`在线 ${online} / ${data.devices.length}`:'正在重连'}}</span><button v-if="!local" class="text-button" @click="logout">退出登录</button>
+  </header>
   <main>
+   <div v-if="!connected" class="connection-warning" role="status">连接已中断，正在自动重连。当前显示的是上次收到的数据。</div>
    <template v-if="page==='live'">
-    <section class="toolbar"><strong>监测中</strong><div class="actions"><button class="button" @click="editingLayout=true">布局</button></div></section>
-    <div class="monitor-grid"><section class="panel seat-panel"><div class="classroom"><div class="teacher-desk">讲台</div><div class="seat-rows"><div v-for="row in rows" :key="row" class="seat-row" :style="{'--columns':columns}"><template v-for="col in columns" :key="col"><div v-if="seatAt(row,col)" class="seat" :class="tone(seatAt(row,col)!.score)" :aria-label="`座位 ${seatAt(row,col)!.label}，${statuses[seatAt(row,col)!.status]}，音量 ${score(seatAt(row,col)!.score)}`" :title="seatAt(row,col)!.deviceName??statuses[seatAt(row,col)!.status]"><span>{{seatAt(row,col)!.label}}</span><strong>{{score(seatAt(row,col)!.score)}}</strong><small v-if="seatAt(row,col)!.score===null">{{statuses[seatAt(row,col)!.status]}}</small></div><div v-else class="aisle-cell" aria-hidden="true"></div></template></div></div></div></section></div>
+    <section class="toolbar"><div class="page-heading"><h1>实时音量</h1><span>音量 0–100</span><span v-if="offline" class="offline-count">{{offline}} 台离线</span></div><button class="button" @click="editingLayout=true">座位布局</button></section>
+    <section class="panel seat-panel" :class="{'outdated':!connected}"><div class="classroom"><div class="teacher-desk"><span>讲台</span></div><div class="seat-rows"><div v-for="row in rows" :key="row" class="seat-row" :style="{'--columns':columns}">
+     <template v-for="col in columns" :key="col"><div v-if="seatAt(row,col)" class="seat" :class="[tone(seatAt(row,col)!.score),{'seat-error':['error','blocked','stale'].includes(seatAt(row,col)!.status)}]" :aria-label="`座位 ${seatAt(row,col)!.label}，${statuses[seatAt(row,col)!.status]}，音量 ${score(seatAt(row,col)!.score)}`" :title="seatAt(row,col)!.deviceName??statuses[seatAt(row,col)!.status]">
+      <span class="seat-label">{{seatAt(row,col)!.label}}<small>号</small></span><strong>{{score(seatAt(row,col)!.score)}}</strong><small v-if="seatAt(row,col)!.score===null" class="seat-state">{{statuses[seatAt(row,col)!.status]}}</small><div v-else class="seat-meter" aria-hidden="true"><i :style="{width:`${seatAt(row,col)!.score}%`}"></i></div>
+     </div><div v-else class="aisle-cell" aria-hidden="true"></div></template>
+    </div></div></div></section>
    </template>
-   <template v-else><section v-if="local" class="toolbar"><div class="actions"><button class="button primary" @click="studentSetup='package'">生成学生端</button><button class="button" @click="studentSetup='password'">维护密码</button></div></section><DeviceEnrollment :api="api" :seats="data.seats" :devices="data.devices" @notice="toast"/><section v-if="data.devices.length" class="panel"><div class="table-scroll"><table><thead><tr><th>IP</th><th>座位</th><th>状态</th><th></th></tr></thead><tbody><tr v-for="device in data.devices" :key="device.id"><td>{{device.name}}</td><td><select :value="device.seatId??''" :aria-label="`${device.name} 的座位`" @change="bind(device,$event)" :disabled="busy"><option value="" disabled>选择座位</option><option v-for="seat in data.seats" :key="seat.id" :value="seat.id" :disabled="data.devices.some(d=>d.id!==device.id&&d.seatId===seat.id)">{{seat.label}} 号</option></select></td><td><span class="device-status" :class="{offline:device.status==='offline'}">{{statuses[device.status]??device.status}}</span></td><td><button class="text-button danger" @click="remove(device)" :disabled="busy">移除</button></td></tr></tbody></table></div></section></template>
+   <template v-else>
+    <section class="toolbar"><div class="page-heading"><h1>学生机管理</h1><span>{{data.devices.length}} 台已接入</span></div><div v-if="local" class="actions"><button class="button primary" @click="studentSetup='package'">生成学生端</button><button class="button" @click="studentSetup='password'">维护密码</button></div></section>
+    <DeviceEnrollment :api="api" :seats="data.seats" :devices="data.devices" @notice="toast"/>
+    <section v-if="data.devices.length" class="panel devices-panel"><div class="panel-heading"><h2>已接入学生机</h2><div class="device-filters"><input v-model="deviceSearch" type="search" placeholder="搜索 IP 或座位" aria-label="搜索学生机" @keydown.esc="deviceSearch=''"/><select v-model="deviceFilter" aria-label="筛选学生机状态"><option value="all">全部状态</option><option value="online">在线 {{online}}</option><option value="offline">离线 {{offline}}</option></select></div></div>
+     <div class="table-scroll"><table><thead><tr><th>学生机 IP</th><th>座位</th><th>状态</th><th class="operation-heading">操作</th></tr></thead><tbody><tr v-for="device in visibleDevices" :key="device.id"><td class="device-ip">{{device.name}}</td><td><select :value="device.seatId??''" :aria-label="`${device.name} 的座位`" @change="bind(device,$event)" :disabled="busy||!connected"><option value="" disabled>分配座位</option><option v-for="seat in data.seats" :key="seat.id" :value="seat.id" :disabled="data.devices.some(d=>d.id!==device.id&&d.seatId===seat.id)">{{seat.label}} 号</option></select></td><td><span class="device-status" :class="device.status"><i aria-hidden="true"></i>{{statuses[device.status]??device.status}}</span></td><td class="operation-cell"><button class="text-button danger" @click="remove(device)" :disabled="busy||!connected">移除</button></td></tr><tr v-if="!visibleDevices.length"><td colspan="4" class="empty">没有匹配的学生机</td></tr></tbody></table></div>
+    </section>
+   </template>
   </main>
  </template>
  <SeatLayout v-if="editingLayout&&data" :seats="data.seats" :rows="data.layoutRows" :columns="data.layoutColumns" :busy="busy" @close="editingLayout=false" @save="saveLayout"/>

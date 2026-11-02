@@ -95,7 +95,7 @@ try {
     New-Item -Path $startupKey -Force | Out-Null
     $startupCommand = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $PSScriptRoot 'launch-ui.ps1') + '" -Target teacher -AtLogin'
     New-ItemProperty -Path $startupKey -Name RoomScopeTeacher -Value $startupCommand -PropertyType String -Force | Out-Null
-    Write-Host '教师页面点「学生机」→「生成学生端」，设置维护密码并下载安装包。'
+    Write-Host '教师页面点「学生机管理」→「生成学生端」，设置维护密码并下载安装包。'
     # The local dashboard needs no password; student connections still use HTTPS.
     if (-not $AtLogin -and -not $FromLauncher) { $browserJob = Start-Job -ArgumentList 'http://127.0.0.1:5080',$PSScriptRoot -ScriptBlock {
         param($url, $directory)
