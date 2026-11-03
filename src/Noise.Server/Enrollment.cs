@@ -122,9 +122,8 @@ public sealed partial class RoomStore
         lock (gate)
         {
             if (batch.Items is null || batch.Items.Length is < 1 or > 64) throw new ArgumentException("每次请选择 1～64 台设备。");
-            if (batch.Items.Select(i => i.RequestId).Distinct().Count() != batch.Items.Length ||
-                batch.Items.Select(i => i.SeatId).Distinct().Count() != batch.Items.Length)
-                throw new ArgumentException("申请或座位有重复，请先检查映射。");
+            if (batch.Items.Select(i => i.RequestId).Distinct().Count() != batch.Items.Length)
+                throw new ArgumentException("申请有重复，请先检查映射。");
             var pending = EnrollmentRequests().Requests.ToDictionary(r => r.Id);
             var plan = new List<(PendingDevice Request, Device Device, string Hash)>();
             foreach (var item in batch.Items)
@@ -132,8 +131,6 @@ public sealed partial class RoomStore
                 if (!pending.TryGetValue(item.RequestId, out var request)) throw new ArgumentException("部分申请已过期或已处理，请刷新。");
                 if (!Seats.Any(s => s.Id == item.SeatId)) throw new ArgumentException("请选择有效座位。");
                 if (plan.Any(p => p.Request.HardwareFingerprint == request.HardwareFingerprint)) throw new ArgumentException("同一硬件标识有多个申请，请核对后只批准其中一个。");
-                if (devices.Values.Any(d => !d.Demo && d.SeatId == item.SeatId && d.Id != request.ExistingDeviceId))
-                    throw new ArgumentException($"座位 {Seats.First(s => s.Id == item.SeatId).Label} 已被其他设备占用。");
                 var hash = (string)Scalar("SELECT claim_hash FROM enrollment_requests WHERE id=$id", ("$id", item.RequestId))!;
                 plan.Add((request, new Device { Id = Guid.NewGuid().ToString("N"), Name = request.Name, SeatId = item.SeatId, IpAddress = request.IpAddress }, hash));
             }

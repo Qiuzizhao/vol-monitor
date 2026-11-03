@@ -95,6 +95,49 @@ public sealed class ContinuousMonitoringTests : IDisposable
     }
 
     [Fact]
+    public void SharedSeatShowsHighestValidVolumeAndKeepsBothDevices()
+    {
+        var first = Enroll('A', "seat-01"); var second = Enroll('B', "seat-01");
+        var session = store.Snapshot().Session!.Id;
+        store.Report(first, new("boot", 1, session, "ok", "mic", -85, -75, 0), "192.168.1.2");
+        store.Report(second, new("boot", 1, session, "ok", "mic", -20, -10, 0), "192.168.1.10");
+        var seat = store.Snapshot().Seats[0];
+        Assert.Equal(105.9, seat.Score); Assert.Equal(second, seat.DeviceId);
+        Assert.Equal("192.168.1.2、192.168.1.10", seat.DeviceName);
+        Assert.Equal(2, store.Snapshot().Devices.Length);
+        store.Report(second, new("boot", 2, session, "error", "mic"));
+        Assert.Equal(29.4, store.Snapshot().Seats[0].Score);
+        clock.Advance(11);
+        store.Report(first, new("boot", 2, session, "no_signal", "mic", -120, -120, 0));
+        Assert.Equal(0d, store.Snapshot().Seats[0].Score);
+        Assert.Equal(first, store.Snapshot().Seats[0].DeviceId);
+        store.SaveLayout(new([["02"]]));
+        Assert.All(store.Snapshot().Devices, d => Assert.Null(d.SeatId));
+    }
+
+    [Fact]
+    public void LegacyUniqueIndexIsRemovedAndSharedBindingsSurviveRestartAndSwap()
+    {
+        var first = Enroll('A', "seat-01"); var second = Enroll('B', "seat-02");
+        store.Dispose();
+        using (var db = new SqliteConnection($"Data Source={Path.Combine(directory, "roomscope.db")}"))
+        {
+            db.Open(); using var cmd = db.CreateCommand();
+            cmd.CommandText = "CREATE UNIQUE INDEX one_device_per_seat ON devices(seat_id) WHERE seat_id IS NOT NULL";
+            cmd.ExecuteNonQuery();
+        }
+        store = Open(); store.Assign(second, "seat-01");
+        store.Dispose(); store = Open();
+        Assert.Equal(2, store.Snapshot().Devices.Length);
+        Assert.All(store.Snapshot().Devices, d => Assert.Equal("seat-01", d.SeatId));
+        Assert.Equal(first, store.Authenticate(new string('A', 64)));
+        Assert.Equal(second, store.Authenticate(new string('B', 64)));
+        store.Assign(first, "seat-02");
+        Assert.Equal("seat-02", store.Snapshot().Devices.Single(d => d.Id == first).SeatId);
+        Assert.Equal("seat-01", store.Snapshot().Devices.Single(d => d.Id == second).SeatId);
+    }
+
+    [Fact]
     public void AnOldHighCalibrationCannotSubtractWhispers()
     {
         var id = Enroll('A', "seat-01");

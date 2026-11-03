@@ -44,7 +44,8 @@ public sealed partial class RoomStore : IDisposable
             PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS seats(id TEXT PRIMARY KEY,label TEXT,row_no INTEGER,column_no INTEGER,zone_id TEXT);
             CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,name TEXT,seat_id TEXT,token_hash TEXT,microphone_id TEXT);
-            CREATE UNIQUE INDEX IF NOT EXISTS one_device_per_seat ON devices(seat_id) WHERE seat_id IS NOT NULL;
+            DROP INDEX IF EXISTS one_device_per_seat;
+            CREATE INDEX IF NOT EXISTS devices_by_seat ON devices(seat_id);
             CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,name TEXT,mode TEXT,demo INTEGER,status TEXT,started_at TEXT,ended_at TEXT,algorithm TEXT,config TEXT);
             CREATE TABLE IF NOT EXISTS calibrations(id TEXT,device_id TEXT,microphone_id TEXT,baseline REAL,sample_count INTEGER,created_at TEXT,PRIMARY KEY(id,device_id));
             CREATE TABLE IF NOT EXISTS device_metrics(session_id TEXT,bucket INTEGER,device_id TEXT,seat_id TEXT,zone_id TEXT,score REAL,level REAL,peak REAL,clipping REAL,baseline_id TEXT,PRIMARY KEY(session_id,bucket,device_id));
@@ -114,7 +115,6 @@ public sealed partial class RoomStore : IDisposable
         {
             if (!devices.TryGetValue(id, out var d) || d.Demo) throw new ArgumentException("设备不存在。");
             if (!Seats.Any(s => s.Id == seatId)) throw new ArgumentException("座位不存在。");
-            if (devices.Values.Any(other => !other.Demo && other.Id != id && other.SeatId == seatId)) throw new ArgumentException("该座位已绑定其他设备。");
             d.SeatId = seatId;
             d.Level = d.Smoothed = null; d.LastSample = null;
             Exec("UPDATE devices SET seat_id=$seat WHERE id=$id", ("$seat", seatId), ("$id", id));
@@ -290,15 +290,22 @@ public sealed partial class RoomStore : IDisposable
 
     private SeatView[] SeatViews(DateTimeOffset now) => Seats.Select(seat =>
     {
-        var d = devices.Values.FirstOrDefault(d => d.SeatId == seat.Id && d.Demo == (session?.Demo == true));
-        if (d is null) return new SeatView(seat.Id, seat.Label, seat.Row, seat.Column, seat.ZoneId, null, null, "unbound", null, null, null, null, null);
+        var assigned = devices.Values.Where(d => d.SeatId == seat.Id && d.Demo == (session?.Demo == true)).ToArray();
+        if (assigned.Length == 0) return new SeatView(seat.Id, seat.Label, seat.Row, seat.Column, seat.ZoneId, null, null, "unbound", null, null, null, null, null);
+        var view = assigned.Select(d => DeviceSeatView(seat, d, now)).OrderByDescending(s => s.Score ?? -1)
+            .ThenByDescending(s => s.LastSeen).First();
+        return view with { DeviceName = string.Join("、", assigned.Select(d => d.IpAddress ?? "未连接")) };
+    }).ToArray();
+
+    private SeatView DeviceSeatView(Seat seat, Device d, DateTimeOffset now)
+    {
         var status = Status(d, now);
         return new SeatView(seat.Id, seat.Label, seat.Row, seat.Column, seat.ZoneId, d.Id, d.IpAddress ?? "未连接", status,
             continuousMonitoring ?
                 ((status is "ok" or "no_signal") && d.LastSample is not null && now - d.LastSample <= TimeSpan.FromSeconds(3) && d.Smoothed is { } directLevel ? Acoustics.InputScore(directLevel) : null) :
                 (status == "ok" && d.Smoothed is { } level && d.Baseline is { } baseline ? Acoustics.Score(level, baseline) : null),
             d.Level, d.Baseline, d.LastSeen, d.Clipping);
-    }).ToArray();
+    }
 
     private ZoneView[] ZoneViews(SeatView[] seats, DateTimeOffset now, bool advance) => Zones.Select(z =>
     {

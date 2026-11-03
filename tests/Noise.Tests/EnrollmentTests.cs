@@ -148,15 +148,27 @@ public sealed class EnrollmentTests : IDisposable
     }
 
     [Fact]
-    public void ConflictingBatchDoesNotPartiallyApproveOrOverwriteSeats()
+    public void RepeatedRequestDoesNotPartiallyApproveButSharedSeatsAreAllowed()
     {
         store.SetEnrollmentWindow(true);
         var (first, key1) = Request(); var (second, key2) = Request("PC02", Hardware("001122334466"));
-        Assert.Throws<ArgumentException>(() => store.ApproveEnrollments(new([new(first.RequestId!, "seat-01"), new(second.RequestId!, "seat-01")])));
+        Assert.Throws<ArgumentException>(() => store.ApproveEnrollments(new([new(first.RequestId!, "seat-01"), new(first.RequestId!, "seat-02")])));
         Assert.Empty(store.Snapshot().Devices); Assert.Null(store.Authenticate(key1)); Assert.Null(store.Authenticate(key2));
         var id = Approve(first, key1);
-        Assert.Throws<ArgumentException>(() => Approve(second, key2));
-        Assert.Equal(id, Assert.Single(store.Snapshot().Devices).Id);
+        var secondId = Approve(second, key2);
+        Assert.Equal(2, store.Snapshot().Devices.Length); Assert.NotEqual(id, secondId);
+        Assert.All(store.Snapshot().Devices, d => Assert.Equal("seat-01", d.SeatId));
+    }
+
+    [Fact]
+    public void DifferentDevicesCanBeApprovedToTheSameSeatInOneBatch()
+    {
+        store.SetEnrollmentWindow(true);
+        var (first, key1) = Request(); var (second, key2) = Request("PC02", Hardware("001122334466"));
+        store.ApproveEnrollments(new([new(first.RequestId!, "seat-01"), new(second.RequestId!, "seat-01")]));
+        Assert.Equal(2, store.Snapshot().Devices.Length);
+        Assert.All(store.Snapshot().Devices, d => Assert.Equal("seat-01", d.SeatId));
+        Assert.NotNull(store.Authenticate(key1)); Assert.NotNull(store.Authenticate(key2));
     }
 
     [Fact]

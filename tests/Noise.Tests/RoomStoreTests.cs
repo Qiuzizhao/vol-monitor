@@ -130,10 +130,11 @@ public sealed class RoomStoreTests : IDisposable
     }
 
     [Fact]
-    public void SeatCannotBeDoubleBoundAndInvalidSamplesAreRejected()
+    public void SharedSeatsAreAllowedAndInvalidSamplesAreRejected()
     {
         var (d, session) = StartReal(); var other = Enroll("PC-02");
-        Assert.Throws<ArgumentException>(()=>store.Assign(other.DeviceId,"seat-01"));
+        store.Assign(other.DeviceId,"seat-01");
+        Assert.Equal(2, store.Snapshot().Devices.Count(d => d.SeatId == "seat-01"));
         Assert.Throws<ArgumentException>(()=>store.Report(d.DeviceId,new("boot",2,session.Id,"ok","mic-1",double.NaN,-20,0)));
         Assert.Throws<ArgumentException>(()=>store.Report(d.DeviceId,new("boot",3,session.Id,"ok","mic-1",-30,-50,0)));
     }
