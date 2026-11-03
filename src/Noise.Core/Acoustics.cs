@@ -2,11 +2,12 @@ namespace Noise.Core;
 
 public static class Acoustics
 {
-    public const string AlgorithmVersion = "rms-direct-p70-v3";
+    public const string AlgorithmVersion = "rms-direct-p70-v4";
     public const double InputFloorDbfs = -110;
-    public const double InputCeilingDbfs = -25;
-    public static double InputScore(double level) => Math.Round(Math.Clamp(
-        (level - InputFloorDbfs) / (InputCeilingDbfs - InputFloorDbfs) * 100, 0, 100), 1);
+    // A reference for sensitivity, not a ceiling: louder inputs must keep rising.
+    public const double InputReferenceDbfs = -25;
+    public static double InputScore(double level) => Math.Round(Math.Max(0,
+        (level - InputFloorDbfs) / (InputReferenceDbfs - InputFloorDbfs) * 100), 1);
     public const double DeadbandDb = 1;
     public const double ScoreSpanDb = 18;
 

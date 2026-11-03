@@ -13,9 +13,20 @@ public sealed class AcousticsTests
     [InlineData(-85, 29.4)]
     [InlineData(-65, 52.9)]
     [InlineData(-25, 100)]
-    [InlineData(0, 100)]
+    [InlineData(-20, 105.9)]
+    [InlineData(-15, 111.8)]
+    [InlineData(-5, 123.5)]
+    [InlineData(0, 129.4)]
     public void DirectMicrophoneScoreHasNoRoomBaseline(double level, double expected) =>
         Assert.Equal(expected, Acoustics.InputScore(level));
+
+    [Fact]
+    public void LoudInputKeepsRisingBeyondOneHundred()
+    {
+        var scores = Enumerable.Range(0, 26).Select(i => Acoustics.InputScore(-25 + i)).ToArray();
+        Assert.Equal(100, scores[0]);
+        for (var i = 1; i < scores.Length; i++) Assert.True(scores[i] > scores[i - 1]);
+    }
 
     [Theory]
     [InlineData(-90, 0)]

@@ -147,9 +147,9 @@ public sealed partial class RoomStore : IDisposable
                 ("$id", session.Id), ("$name", session.Name), ("$mode", session.Mode), ("$demo", session.Demo),
                 ("$status", session.Status), ("$start", session.StartedAt.ToString("O")), ("$algorithm", Acoustics.AlgorithmVersion),
                 ("$config", JsonSerializer.Serialize(new { scoring = continuousMonitoring ? "microphone" : "baseline", alpha = .35,
-                    attackAlpha = continuousMonitoring ? .8 : .35, inputFloorDbfs = Acoustics.InputFloorDbfs, inputCeilingDbfs = Acoustics.InputCeilingDbfs,
+                    attackAlpha = continuousMonitoring ? .8 : .35, inputFloorDbfs = Acoustics.InputFloorDbfs, inputReferenceDbfs = Acoustics.InputReferenceDbfs,
                     deadband = continuousMonitoring ? 0 : Acoustics.DeadbandDb,
-                    span = continuousMonitoring ? Acoustics.InputCeilingDbfs - Acoustics.InputFloorDbfs : Acoustics.ScoreSpanDb, percentile = .7,
+                    span = continuousMonitoring ? Acoustics.InputReferenceDbfs - Acoustics.InputFloorDbfs : Acoustics.ScoreSpanDb, percentile = .7,
                     alertThreshold = request.Mode == "discussion" ? 85 : 70, alertSeconds = 5, clearSeconds = 3, bucketSeconds = 5 })));
             if (request.Demo)
                 foreach (var seat in Seats)

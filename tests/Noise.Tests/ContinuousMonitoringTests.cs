@@ -69,6 +69,32 @@ public sealed class ContinuousMonitoringTests : IDisposable
     }
 
     [Fact]
+    public void LoudMicrophoneIsNotPinnedAtOneHundredAndRecoversWhenQuiet()
+    {
+        var id = Enroll('A', "seat-01");
+        var command = store.Report(id, new("boot", 1, null, "idle", "mic"));
+        store.Report(id, new("boot", 2, command.SessionId, "ok", "mic", -25, -15, 0));
+        Assert.Equal(100d, store.Snapshot().Seats[0].Score);
+        var previous = 100d;
+        for (var i = 0; i < 4; i++)
+        {
+            clock.Advance(1);
+            store.Report(id, new("boot", i + 3, command.SessionId, "ok", "mic", -20 + i * 5, -10 + i * 3, 0));
+            var score = store.Snapshot().Seats[0].Score!.Value;
+            Assert.True(score > previous); previous = score;
+        }
+        // Normal quiet input must leave the high range; digital silence resets to zero.
+        for (var i = 0; i < 10; i++)
+        {
+            clock.Advance(1);
+            store.Report(id, new("boot", i + 7, command.SessionId, "ok", "mic", -85, -75, 0));
+        }
+        Assert.InRange(store.Snapshot().Seats[0].Score!.Value, 29, 32);
+        store.Report(id, new("boot", 17, command.SessionId, "no_signal", "mic", -120, -120, 0));
+        Assert.Equal(0d, store.Snapshot().Seats[0].Score);
+    }
+
+    [Fact]
     public void AnOldHighCalibrationCannotSubtractWhispers()
     {
         var id = Enroll('A', "seat-01");

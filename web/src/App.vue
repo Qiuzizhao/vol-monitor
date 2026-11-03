@@ -73,10 +73,10 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
   <main>
    <div v-if="!connected" class="connection-warning" role="status">连接已中断，正在自动重连。当前显示的是上次收到的数据。</div>
    <template v-if="page==='live'">
-    <section class="toolbar"><div class="page-heading"><h1>实时音量</h1><span>音量 0–100</span><span v-if="offline" class="offline-count">{{offline}} 台离线</span></div><button class="button" @click="editingLayout=true">座位布局</button></section>
+    <section class="toolbar"><div class="page-heading"><h1>实时音量</h1><span>音量指数</span><span v-if="offline" class="offline-count">{{offline}} 台离线</span></div><button class="button" @click="editingLayout=true">座位布局</button></section>
     <section class="panel seat-panel" :class="{'outdated':!connected}"><div class="classroom"><div class="teacher-desk"><span>讲台</span></div><div class="seat-rows"><div v-for="row in rows" :key="row" class="seat-row" :style="{'--columns':columns}">
      <template v-for="col in columns" :key="col"><div v-if="seatAt(row,col)" class="seat" :class="[tone(seatAt(row,col)!.score),{'seat-error':['error','blocked','stale'].includes(seatAt(row,col)!.status)}]" :aria-label="`座位 ${seatAt(row,col)!.label}，${statuses[seatAt(row,col)!.status]}，音量 ${score(seatAt(row,col)!.score)}`" :title="seatAt(row,col)!.deviceName??statuses[seatAt(row,col)!.status]">
-      <span class="seat-label">{{seatAt(row,col)!.label}}<small>号</small></span><strong>{{score(seatAt(row,col)!.score)}}</strong><small v-if="seatAt(row,col)!.score===null" class="seat-state">{{statuses[seatAt(row,col)!.status]}}</small><div v-else class="seat-meter" aria-hidden="true"><i :style="{width:`${seatAt(row,col)!.score}%`}"></i></div>
+      <span class="seat-label">{{seatAt(row,col)!.label}}<small>号</small></span><strong>{{score(seatAt(row,col)!.score)}}</strong><small v-if="seatAt(row,col)!.score===null" class="seat-state">{{statuses[seatAt(row,col)!.status]}}</small><div v-else class="seat-meter" aria-hidden="true"><i :style="{width:`${Math.min(100,seatAt(row,col)!.score!)}%`}"></i></div>
      </div><div v-else class="aisle-cell" aria-hidden="true"></div></template>
     </div></div></div></section>
    </template>
