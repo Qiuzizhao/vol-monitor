@@ -17,6 +17,7 @@ function Invoke-Checked([scriptblock]$Command) {
 Invoke-Checked { dotnet test RoomScope.slnx -c Release --nologo }
 if (Test-Path web/package-lock.json) { Invoke-Checked { npm ci --prefix web } }
 else { Invoke-Checked { npm install --prefix web --package-lock=false } }
+Invoke-Checked { npm test --prefix web }
 Invoke-Checked { npm run build --prefix web }
 # Publish into a fresh directory so an earlier classroom configuration or device
 # credential can never leak into the reusable student template.
