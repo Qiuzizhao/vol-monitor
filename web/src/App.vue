@@ -61,6 +61,10 @@ function connect(){
  socket.onclose=()=>{connected.value=false;retry=setTimeout(connect,3000);};socket.onerror=()=>connected.value=false;
 }
 async function bind(device:Device,event:Event){const seatId=(event.target as HTMLSelectElement).value;await perform(async()=>{await api(`/devices/${device.id}/seat`,'PUT',{seatId});await refresh();});}
+async function matchSeats(){await perform(async()=>{
+ const result=await api('/devices/match-seats','POST');await refresh();deviceSort.value='ip';sortDescending.value=false;
+ toast(result.changed?`已按 IP 顺序匹配 ${result.matched} 台学生机。`:'当前座位已按 IP 顺序匹配。');
+});}
 async function remove(device:Device){
  if(busy.value)return;
  removeTrigger=document.activeElement instanceof HTMLButtonElement?document.activeElement:null;
@@ -99,7 +103,7 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
     <section class="toolbar"><div class="page-heading"><h1>学生机管理</h1><span>{{data.devices.length}} 台已接入</span></div><div v-if="local" class="actions"><button class="button primary" @click="studentSetup='package'">生成学生端</button><button class="button" @click="studentSetup='password'">维护密码</button></div></section>
 
     <p v-if="!data.devices.length" class="empty">等待学生机自动连接</p>
-    <section v-if="data.devices.length" class="panel devices-panel"><div class="panel-heading"><h2>已接入学生机</h2><div class="device-filters"><input v-model="deviceSearch" type="search" placeholder="搜索 IP 或座位" aria-label="搜索学生机" @keydown.esc="deviceSearch=''"/><select v-model="deviceFilter" aria-label="筛选学生机状态"><option value="all">全部状态</option><option value="online">在线 {{online}}</option><option value="offline">离线 {{offline}}</option></select></div></div>
+    <section v-if="data.devices.length" class="panel devices-panel"><div class="panel-heading"><h2>已接入学生机</h2><div class="device-filters"><button class="button" @click="matchSeats" :disabled="busy||!connected" title="按 IP 升序匹配全部学生机（含离线），按座位名称升序重新分配，覆盖原座位安排">顺序匹配</button><input v-model="deviceSearch" type="search" placeholder="搜索 IP 或座位" aria-label="搜索学生机" @keydown.esc="deviceSearch=''"/><select v-model="deviceFilter" aria-label="筛选学生机状态"><option value="all">全部状态</option><option value="online">在线 {{online}}</option><option value="offline">离线 {{offline}}</option></select></div></div>
      <div class="table-scroll"><table><thead><tr><th :aria-sort="deviceSort==='ip'?(sortDescending?'descending':'ascending'):'none'"><button class="sort-button" @click="sortDevices('ip')" :title="deviceSort==='ip'&&!sortDescending?'按 IP 从大到小排序':'按 IP 从小到大排序'">学生机 IP <span aria-hidden="true">{{sortIndicator('ip')}}</span></button></th><th :aria-sort="deviceSort==='seat'?(sortDescending?'descending':'ascending'):'none'"><button class="sort-button" @click="sortDevices('seat')" :title="deviceSort==='seat'&&!sortDescending?'按座位从大到小排序':'按座位从小到大排序'">座位 <span aria-hidden="true">{{sortIndicator('seat')}}</span></button></th><th>状态</th><th class="operation-heading">操作</th></tr></thead><tbody><tr v-for="device in visibleDevices" :key="device.id"><td class="device-ip">{{device.name}}</td><td><select :value="device.seatId??''" :aria-label="`${device.name} 的座位`" @change="bind(device,$event)" :disabled="busy||!connected"><option value="" disabled>分配座位</option><option v-for="seat in data.seats" :key="seat.id" :value="seat.id">{{seat.label}} 号</option></select></td><td><span class="device-status" :class="device.status"><i aria-hidden="true"></i>{{statuses[device.status]??device.status}}</span></td><td class="operation-cell"><button class="text-button danger" @click="remove(device)" :disabled="busy||!connected">移除</button></td></tr><tr v-if="!visibleDevices.length"><td colspan="4" class="empty">没有匹配的学生机</td></tr></tbody></table></div>
     </section>
    </template>
