@@ -9,3 +9,5 @@
 @media(max-width:440px){.app-header{padding:0 12px}nav{gap:13px}.connection i{display:none}.toolbar{flex-wrap:wrap}.toolbar .actions{width:100%}.device-filters input{width:100%;flex:1;min-width:135px}.device-filters select{min-width:100px}.center-state form{flex-direction:column}.page-heading h1{width:auto}.page-heading>span{display:none}}
 @media(prefers-reduced-motion:reduce){.seat-meter i{transition:none}}
 .sort-button{display:inline-flex;align-items:center;gap:7px;padding:4px 0;font-weight:inherit}.sort-button:hover{color:#126b4d}.sort-button span{font-size:15px;min-width:12px;text-align:center}th[aria-sort=none] .sort-button span{opacity:.5}
+
+.seat strong.seat-duplicate-label{font-size:16px;letter-spacing:0;line-height:1.4;color:#a12b28;flex:1;display:flex;align-items:center;justify-content:center}

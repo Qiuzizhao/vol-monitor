@@ -95,22 +95,28 @@ public sealed class ContinuousMonitoringTests : IDisposable
     }
 
     [Fact]
-    public void SharedSeatShowsHighestValidVolumeAndKeepsBothDevices()
+    public void SharedSeatShowsDuplicateWithoutVolumeUntilBindingIsResolved()
     {
         var first = Enroll('A', "seat-01"); var second = Enroll('B', "seat-01");
         var session = store.Snapshot().Session!.Id;
         store.Report(first, new("boot", 1, session, "ok", "mic", -85, -75, 0), "192.168.1.2");
         store.Report(second, new("boot", 1, session, "ok", "mic", -20, -10, 0), "192.168.1.10");
         var seat = store.Snapshot().Seats[0];
-        Assert.Equal(105.9, seat.Score); Assert.Equal(second, seat.DeviceId);
+        Assert.Equal("duplicate", seat.Status); Assert.Null(seat.Score); Assert.Null(seat.DeviceId);
+        Assert.Null(seat.LevelDbfs);
         Assert.Equal("192.168.1.2、192.168.1.10", seat.DeviceName);
         Assert.Equal(2, store.Snapshot().Devices.Length);
         store.Report(second, new("boot", 2, session, "error", "mic"));
-        Assert.Equal(29.4, store.Snapshot().Seats[0].Score);
+        Assert.Equal("duplicate", store.Snapshot().Seats[0].Status);
+        Assert.Null(store.Snapshot().Seats[0].Score);
         clock.Advance(11);
         store.Report(first, new("boot", 2, session, "no_signal", "mic", -120, -120, 0));
+        Assert.Equal("duplicate", store.Snapshot().Seats[0].Status);
+        Assert.Null(store.Snapshot().Seats[0].Score);
+        store.Assign(second, "seat-02");
         Assert.Equal(0d, store.Snapshot().Seats[0].Score);
         Assert.Equal(first, store.Snapshot().Seats[0].DeviceId);
+        store.Assign(second, "seat-01");
         store.SaveLayout(new([["02"]]));
         Assert.All(store.Snapshot().Devices, d => Assert.Null(d.SeatId));
     }

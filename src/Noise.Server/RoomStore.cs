@@ -295,9 +295,11 @@ public sealed partial class RoomStore : IDisposable
     {
         var assigned = devices.Values.Where(d => d.SeatId == seat.Id && d.Demo == (session?.Demo == true)).ToArray();
         if (assigned.Length == 0) return new SeatView(seat.Id, seat.Label, seat.Row, seat.Column, seat.ZoneId, null, null, "unbound", null, null, null, null, null);
-        var view = assigned.Select(d => DeviceSeatView(seat, d, now)).OrderByDescending(s => s.Score ?? -1)
-            .ThenByDescending(s => s.LastSeen).First();
-        return view with { DeviceName = string.Join("、", assigned.Select(d => d.IpAddress ?? "未连接")) };
+        if (assigned.Length > 1)
+            return new SeatView(seat.Id, seat.Label, seat.Row, seat.Column, seat.ZoneId, null,
+                string.Join("、", assigned.Select(d => d.IpAddress ?? "未连接")), "duplicate",
+                null, null, null, assigned.Max(d => d.LastSeen), null);
+        return DeviceSeatView(seat, assigned[0], now);
     }).ToArray();
 
     private SeatView DeviceSeatView(Seat seat, Device d, DateTimeOffset now)
