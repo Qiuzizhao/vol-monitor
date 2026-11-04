@@ -12,6 +12,7 @@ public sealed partial class RoomStore : IDisposable
     private readonly SqliteConnection db;
     private readonly TimeProvider clock;
     private readonly bool continuousMonitoring;
+    public bool AutomaticIpEnrollment { get; }
     private readonly Dictionary<string, Device> devices = new();
     private readonly Dictionary<string, string> tokens = new();
     private readonly Dictionary<string, AlertLatch> latches = new();
@@ -29,12 +30,13 @@ public sealed partial class RoomStore : IDisposable
         new("middle-left", "中排左区"), new("middle-right", "中排右区"),
         new("back-left", "后排左区"), new("back-right", "后排右区")];
 
-    public RoomStore(string directory, string name, int rows = 6, int columns = 6, TimeProvider? timeProvider = null, bool continuousMonitoring = false)
+    public RoomStore(string directory, string name, int rows = 6, int columns = 6, TimeProvider? timeProvider = null, bool continuousMonitoring = false, bool automaticIpEnrollment = false)
     {
         if (rows is < 3 or > 20 || columns is < 2 or > 16 || columns % 2 != 0)
             throw new ArgumentException("Rows must be 3–20; columns must be even and 2–16.");
         clock = timeProvider ?? TimeProvider.System;
         this.continuousMonitoring = continuousMonitoring;
+        AutomaticIpEnrollment = automaticIpEnrollment;
         RoomName = name;
         Directory.CreateDirectory(directory);
         if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
@@ -88,6 +90,7 @@ public sealed partial class RoomStore : IDisposable
                 devices.Add(d.Id, d);
                 tokens.Add(reader.GetString(3), d.Id);
             }
+        if (AutomaticIpEnrollment) MergeDevicesByAddress();
         foreach (var d in devices.Values) LoadBaseline(d);
         foreach (var z in Zones) latches[z.Id] = new();
         if (continuousMonitoring) Start(new("机房监控"));

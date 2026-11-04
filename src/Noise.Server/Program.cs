@@ -37,7 +37,8 @@ builder.Services.AddSingleton<RoomStore>(services =>
     var config = services.GetRequiredService<IConfiguration>();
     var directory = DataDirectory(config, services.GetRequiredService<IWebHostEnvironment>());
     return new RoomStore(directory, config["Room:Name"] ?? "信息科技机房 01",
-        config.GetValue("Room:Rows", 6), config.GetValue("Room:Columns", 6), continuousMonitoring: true);
+        config.GetValue("Room:Rows", 6), config.GetValue("Room:Columns", 6), continuousMonitoring: true,
+        automaticIpEnrollment: config.GetValue("AutomaticIpEnrollment", true));
 });
 builder.Services.AddSingleton<TeacherAccess>(services =>
 {
@@ -98,9 +99,11 @@ app.MapPost("/api/login", VerifyMaintenance).RequireRateLimiting("auth"); // Old
 
 app.MapGet("/api/enrollment", (RoomStore store) => store.EnrollmentStatus()).RequireRateLimiting("enrollment");
 app.MapPost("/api/device-requests", (EnrollmentRequest request, HttpContext ctx, RoomStore store) =>
-    store.RequestEnrollment(request, EnrollmentClaim(ctx), PeerAddress(ctx))).RequireRateLimiting("enrollment");
+    store.AutomaticIpEnrollment && !LanTeacherAccess.IsAllowed(ctx) ? Results.Unauthorized() :
+    Results.Ok(store.RequestEnrollment(request, EnrollmentClaim(ctx), PeerAddress(ctx)))).RequireRateLimiting("enrollment");
 app.MapGet("/api/device-requests/{id}", (string id, HttpContext ctx, RoomStore store) =>
-    store.PollEnrollment(id, EnrollmentClaim(ctx), PeerAddress(ctx))).RequireRateLimiting("enrollment");
+    store.AutomaticIpEnrollment && !LanTeacherAccess.IsAllowed(ctx) ? Results.Unauthorized() :
+    Results.Ok(store.PollEnrollment(id, EnrollmentClaim(ctx), PeerAddress(ctx)))).RequireRateLimiting("enrollment");
 app.MapPost("/api/telemetry", (DeviceReport request, HttpContext ctx, RoomStore store) =>
 {
     var id = DeviceIdentity(ctx, store);
@@ -202,6 +205,7 @@ static string DataDirectory(IConfiguration config, IWebHostEnvironment environme
     Path.GetFullPath(config["DataDirectory"] ?? Path.Combine(environment.ContentRootPath, "data"));
 static string? DeviceIdentity(HttpContext ctx, RoomStore store)
 {
+    if (store.AutomaticIpEnrollment) return LanTeacherAccess.IsAllowed(ctx) ? store.ConnectAddress(PeerAddress(ctx)) : null;
     var header = ctx.Request.Headers.Authorization.ToString();
     return header.StartsWith("Bearer ", StringComparison.Ordinal) ? store.Authenticate(header[7..]) : null;
 }

@@ -13,7 +13,7 @@ public record AnnotationRequest(string Text);
 public record SeatAssignment(string SeatId);
 public record EnrollmentRequest(string Name, string HardwareFingerprint);
 public record EnrollmentState(string Status, string? RequestId, string? DeviceId);
-public record EnrollmentWindow(bool Open, DateTimeOffset? ClosesAt);
+public record EnrollmentWindow(bool Open, DateTimeOffset? ClosesAt, bool Automatic = false);
 public record EnrollmentApproval(string RequestId, string SeatId);
 public record EnrollmentBatch(EnrollmentApproval[] Items);
 public record LayoutRequest(string?[][] Cells);

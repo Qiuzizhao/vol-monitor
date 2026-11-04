@@ -12,13 +12,14 @@ using Xunit;
 
 namespace Noise.Tests;
 
-public sealed class AppFactory(IPAddress? peer = null, bool packageFixture = false) : WebApplicationFactory<Program>
+public sealed class AppFactory(IPAddress? peer = null, bool packageFixture = false, bool automaticIpEnrollment = false) : WebApplicationFactory<Program>
 {
     public string DataPath { get; } = Path.Combine(Path.GetTempPath(), "roomscope-api-" + Guid.NewGuid());
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder
         .UseSetting("DataDirectory", DataPath).UseSetting("TeacherPassword", "test-password-123")
+        .UseSetting("AutomaticIpEnrollment", automaticIpEnrollment.ToString())
         .UseSetting("ClassroomServerUrl", "https://192.168.1.10:5081")
         .UseSetting("Logging:LogLevel:Default", "Error");
         builder.ConfigureServices(services => services.AddSingleton<IStartupFilter>(new PeerFilter(peer ?? IPAddress.Parse("192.168.1.20"))));

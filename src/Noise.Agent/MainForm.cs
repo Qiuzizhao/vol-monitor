@@ -119,8 +119,9 @@ public sealed class MainForm : Form
         {
             profile = DeploymentProfile.Load();
             if (profile is not null) server.Text = profile.Server;
-            status.Text = "正在检查本机设备身份";
-            fingerprint = await Task.Run(HardwareIdentity.Read);
+            status.Text = "正在连接教师机";
+            // New classroom connections use the observed IP and need no hardware credential.
+            fingerprint = profile?.AutoEnroll == true ? "" : await Task.Run(HardwareIdentity.Read);
             if (closing) return;
             config = AgentConfig.Load(fingerprint, out var loadNotice);
             if (loadNotice is not null) detail.Text = loadNotice;
@@ -130,7 +131,7 @@ public sealed class MainForm : Form
             {
                 server.Text = config.Server; name.Text = Environment.MachineName;
                 var hasSavedMic = microphone.Items.Cast<MicrophoneItem>().Any(m => m.Id == config.MicrophoneId);
-                if (!hasSavedMic) { config = config with { MicrophoneId = SelectedMicrophone() }; config.Save(); }
+                if (!hasSavedMic) { config = config with { MicrophoneId = SelectedMicrophone() }; if (!config.IpIdentity) config.Save(); }
                 for (var i = 0; i < microphone.Items.Count; i++)
                     if (((MicrophoneItem)microphone.Items[i]!).Id == config.MicrophoneId) microphone.SelectedIndex = i;
                 BeginWorker(config);
@@ -146,7 +147,7 @@ public sealed class MainForm : Form
 
     private void StartEnrollment()
     {
-        if (profile?.AutoEnroll != true || fingerprint.Length == 0 || closing) return;
+        if (profile?.AutoEnroll != true || closing) return;
         retryEnrollment.Visible = false;
         enrollmentStopping = new CancellationTokenSource();
         enrollmentTask = EnrollFromImage(enrollmentStopping.Token);

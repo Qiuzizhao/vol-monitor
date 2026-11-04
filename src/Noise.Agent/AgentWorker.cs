@@ -22,7 +22,8 @@ public sealed class AgentWorker : IAsyncDisposable
         new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
         { BaseAddress = AgentConfig.ValidateServer(config.Server), Timeout = TimeSpan.FromSeconds(5) }, new AudioCapture())
     {
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.ReadToken());
+        var token = config.ReadToken();
+        if (token.Length > 0) http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
     }
     internal AgentWorker(AgentConfig config, HttpClient http, IAudioInput audio,
         Func<TimeSpan, CancellationToken, Task>? delay = null)

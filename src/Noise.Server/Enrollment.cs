@@ -9,7 +9,7 @@ public sealed record EnrollmentOverview(EnrollmentWindow Window, PendingDevice[]
 public sealed partial class RoomStore
 {
     private DateTimeOffset? enrollmentClosesAt;
-    private EnrollmentWindow Window() => new(enrollmentClosesAt > Now, enrollmentClosesAt);
+    private EnrollmentWindow Window() => AutomaticIpEnrollment ? new(true, null, true) : new(enrollmentClosesAt > Now, enrollmentClosesAt);
 
     public EnrollmentWindow EnrollmentStatus() { lock (gate) return Window(); }
     public EnrollmentWindow SetEnrollmentWindow(bool open)
@@ -22,6 +22,11 @@ public sealed partial class RoomStore
     {
         lock (gate)
         {
+            if (AutomaticIpEnrollment)
+            {
+                var device = ConnectAddress(ipAddress);
+                return new("approved", "ip-" + device, device);
+            }
             if (!Hex64(claim)) throw new UnauthorizedAccessException("接入凭证无效。");
             if (!Hex64(request.HardwareFingerprint) || string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 64)
                 throw new ArgumentException("设备名称或硬件标识无效。");
@@ -52,6 +57,7 @@ public sealed partial class RoomStore
     {
         lock (gate)
         {
+            if (AutomaticIpEnrollment) return new("approved", id, ConnectAddress(ipAddress));
             if (!Hex64(claim)) throw new UnauthorizedAccessException("接入凭证无效。");
             var hash = TeacherAccess.TokenHash(claim);
             string status; string? deviceId; DateTimeOffset expires;
@@ -79,6 +85,7 @@ public sealed partial class RoomStore
     {
         lock (gate)
         {
+            if (AutomaticIpEnrollment) return new(Window(), []);
             var requests = new List<PendingDevice>();
             using (var cmd = Command("""
                 SELECT r.id,r.name,r.fingerprint,r.created_at,r.last_seen,d.id,d.seat_id,a.ip_address
@@ -121,6 +128,7 @@ public sealed partial class RoomStore
     {
         lock (gate)
         {
+            if (AutomaticIpEnrollment) return; // Compatibility with older teacher pages.
             if (batch.Items is null || batch.Items.Length is < 1 or > 64) throw new ArgumentException("每次请选择 1～64 台设备。");
             if (batch.Items.Select(i => i.RequestId).Distinct().Count() != batch.Items.Length)
                 throw new ArgumentException("申请有重复，请先检查映射。");

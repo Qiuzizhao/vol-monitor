@@ -10,6 +10,29 @@ public static class EnrollmentClient
         Func<string> microphoneId, Action<string, string> update, CancellationToken ct)
     {
         var uri = AgentConfig.ValidateServer(profile.Server);
+        using (var automatic = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
+               { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(8) })
+        {
+            while (true)
+            {
+                try
+                {
+                    var config = await TryAutomaticConnection(automatic, microphoneId, ct);
+                    if (config is null) break; // Older teacher compatibility.
+                    try { config.Save(); }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    { DiagnosticLog.Write(AgentConfig.DirectoryPath, "保存连接设置未完成，下次启动自动连接", e); }
+                    return config;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+                {
+                    update("正在连接教师机", "正在自动重连……");
+                    await Task.Delay(3000, ct);
+                }
+            }
+        }
+        if (fingerprint.Length == 0) fingerprint = HardwareIdentity.Read();
         var identity = PendingIdentity.LoadOrCreate(uri.ToString(), fingerprint);
         using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
         { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(8) };
@@ -70,5 +93,16 @@ public static class EnrollmentClient
                 await Task.Delay(15000, ct);
             }
         }
+    }
+
+    internal static async Task<AgentConfig?> TryAutomaticConnection(HttpClient http, Func<string> microphoneId, CancellationToken ct)
+    {
+        var mode = await http.GetFromJsonAsync<EnrollmentWindow>("api/enrollment", ct);
+        if (mode?.Automatic != true) return null;
+        using var response = await http.PostAsJsonAsync("api/device-requests", new EnrollmentRequest(Environment.MachineName, ""), ct);
+        response.EnsureSuccessStatusCode();
+        var connected = await response.Content.ReadFromJsonAsync<EnrollmentState>(ct);
+        if (connected?.DeviceId is null) throw new HttpRequestException("教师机响应无效。");
+        return new AgentConfig(http.BaseAddress!.ToString(), connected.DeviceId, "", Environment.MachineName, microphoneId(), IpIdentity: true);
     }
 }

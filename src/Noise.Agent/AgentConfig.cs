@@ -6,12 +6,13 @@ using Noise.Core;
 namespace Noise.Agent;
 
 public sealed record AgentConfig(string Server, string DeviceId, string ProtectedToken, string Name,
-    string MicrophoneId, string? HardwareFingerprint = null)
+    string MicrophoneId, string? HardwareFingerprint = null, bool IpIdentity = false)
 {
     public static string DirectoryPath => DeploymentProfile.StateDirectory;
     private static string FilePath => Path.Combine(DirectoryPath, "agent.json");
     public string ReadToken()
     {
+        if (IpIdentity) return "";
         if (!MachineIdentity.Matches(HardwareFingerprint, HardwareIdentity.Read()))
             throw new InvalidOperationException("此凭证来自另一台电脑，请重新接入。");
         return Unprotect(ProtectedToken, HardwareFingerprint!);
@@ -27,6 +28,7 @@ public sealed record AgentConfig(string Server, string DeviceId, string Protecte
         {
             if (!File.Exists(FilePath)) return null;
             var config = JsonSerializer.Deserialize<AgentConfig>(File.ReadAllText(FilePath));
+            if (config?.IpIdentity == true) return config;
             if (config is null || !MachineIdentity.Matches(config.HardwareFingerprint, fingerprint))
             {
                 notice = "检测到镜像复制或旧版凭证，已清除本地设备身份，等待重新接入。";
