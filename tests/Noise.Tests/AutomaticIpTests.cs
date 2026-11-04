@@ -79,7 +79,7 @@ public sealed class AutomaticIpTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var second = (await client.GetFromJsonAsync<Dashboard>("/api/teacher/dashboard"))!;
         Assert.Equal(device.Id, Assert.Single(second.Devices).Id);
-        Assert.Equal(52.9, second.Seats.Single(s => s.DeviceId == device.Id).Score);
+        Assert.Equal(578.9, second.Seats.Single(s => s.DeviceId == device.Id).Score);
         var reconnect = await client.PostAsJsonAsync("/api/device-requests", new EnrollmentRequest("other", ""));
         Assert.Equal(device.Id, (await reconnect.Content.ReadFromJsonAsync<EnrollmentState>())!.DeviceId);
     }

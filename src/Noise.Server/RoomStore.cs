@@ -151,9 +151,10 @@ public sealed partial class RoomStore : IDisposable
                 ("$status", session.Status), ("$start", session.StartedAt.ToString("O")), ("$algorithm", Acoustics.AlgorithmVersion),
                 ("$config", JsonSerializer.Serialize(new { scoring = continuousMonitoring ? "microphone" : "baseline", alpha = .35,
                     attackAlpha = continuousMonitoring ? .8 : .35, inputFloorDbfs = Acoustics.InputFloorDbfs, inputReferenceDbfs = Acoustics.InputReferenceDbfs,
+                    inputGain = continuousMonitoring ? Acoustics.InputGain : 1,
                     deadband = continuousMonitoring ? 0 : Acoustics.DeadbandDb,
                     span = continuousMonitoring ? Acoustics.InputReferenceDbfs - Acoustics.InputFloorDbfs : Acoustics.ScoreSpanDb, percentile = .7,
-                    alertThreshold = request.Mode == "discussion" ? 85 : 70, alertSeconds = 5, clearSeconds = 3, bucketSeconds = 5 })));
+                    alertThreshold = (request.Mode == "discussion" ? 85 : 70) * (continuousMonitoring ? Acoustics.InputGain : 1), alertSeconds = 5, clearSeconds = 3, bucketSeconds = 5 })));
             if (request.Demo)
                 foreach (var seat in Seats)
                     devices["demo-" + seat.Id] = new Device { Id = "demo-" + seat.Id, Name = "模拟设备 " + seat.Label,
@@ -324,7 +325,8 @@ public sealed partial class RoomStore : IDisposable
         if (advance)
         {
             var was = latch.Active;
-            latch.Update(limited ? null : score, now, session?.Mode == "discussion" ? 85 : 70);
+            var gain = continuousMonitoring ? Acoustics.InputGain : 1;
+            latch.Update(limited ? null : score, now, (session?.Mode == "discussion" ? 85 : 70) * gain, 20 * gain);
             if (!was && latch.Active) AddAnnotation($"{z.Name}出现持续噪声，指数 {score:0}", "alert");
         }
         return new ZoneView(z.Id, z.Name, score, valid, group.Length, limited, !limited && score is not null && latch.Active);
@@ -338,7 +340,7 @@ public sealed partial class RoomStore : IDisposable
             return new(RoomName, now, Acoustics.AlgorithmVersion, session, calibrationId,
                 calibrationUntil, seats, ZoneViews(seats, now, false),
                 devices.Values.Where(d => !d.Demo).Select(d => new DeviceView(d.Id, d.IpAddress ?? "未连接", d.SeatId, Status(d, now), d.MicrophoneId, d.Baseline, d.LastSeen)).ToArray(),
-                trend.ToArray(), annotations.TakeLast(30).Reverse().ToArray(), LayoutRows, LayoutColumns);
+                trend.ToArray(), annotations.TakeLast(30).Reverse().ToArray(), LayoutRows, LayoutColumns, continuousMonitoring ? Acoustics.InputGain : 1);
         }
     }
 

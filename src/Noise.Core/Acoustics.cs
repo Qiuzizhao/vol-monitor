@@ -2,12 +2,13 @@ namespace Noise.Core;
 
 public static class Acoustics
 {
-    public const string AlgorithmVersion = "rms-direct-p70-v4";
-    public const double InputFloorDbfs = -110;
+    public const string AlgorithmVersion = "rms-direct-p70-v5";
+    public const double InputFloorDbfs = -120;
+    public const double InputGain = 10;
     // A reference for sensitivity, not a ceiling: louder inputs must keep rising.
     public const double InputReferenceDbfs = -25;
     public static double InputScore(double level) => Math.Round(Math.Max(0,
-        (level - InputFloorDbfs) / (InputReferenceDbfs - InputFloorDbfs) * 100), 1);
+        (level - InputFloorDbfs) / (InputReferenceDbfs - InputFloorDbfs) * 100 * InputGain), 1);
     public const double DeadbandDb = 1;
     public const double ScoreSpanDb = 18;
 
@@ -79,7 +80,7 @@ public sealed class AlertLatch
     private DateTimeOffset? highSince, lowSince, last;
     public bool Active { get; private set; }
 
-    public bool Update(double? score, DateTimeOffset now, double threshold)
+    public bool Update(double? score, DateTimeOffset now, double threshold, double hysteresis = 20)
     {
         // Missing data interrupts continuity. It must never count as a quiet measurement.
         if (score is null || last is not null && now - last > TimeSpan.FromSeconds(3)) Reset();
@@ -94,7 +95,7 @@ public sealed class AlertLatch
         else
         {
             highSince = null;
-            lowSince = score < threshold - 20 ? lowSince ?? now : null;
+            lowSince = score < threshold - hysteresis ? lowSince ?? now : null;
             if (lowSince is not null && now - lowSince >= TimeSpan.FromSeconds(3)) Reset();
         }
         return Active;

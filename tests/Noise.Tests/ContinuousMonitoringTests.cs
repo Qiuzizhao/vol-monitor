@@ -28,13 +28,13 @@ public sealed class ContinuousMonitoringTests : IDisposable
         var command = store.Report(id, new("boot", 1, null, "idle", "mic"));
         Assert.Equal("running", command.State); Assert.Null(command.CalibrationId);
         store.Report(id, new("boot", 2, command.SessionId, "ok", "mic", -65, -55, 0));
-        Assert.Equal(52.9, store.Snapshot().Seats[0].Score);
+        Assert.Equal(578.9, store.Snapshot().Seats[0].Score);
         clock.Advance(3600);
         var lateId = Enroll('B', "seat-02");
         var late = store.Report(lateId, new("boot", 1, null, "idle", "mic"));
         Assert.Equal("running", late.State); Assert.Null(late.CalibrationId);
         store.Report(lateId, new("boot", 2, late.SessionId, "ok", "mic", -65, -55, 0));
-        Assert.Equal(52.9, store.Snapshot().Seats[1].Score);
+        Assert.Equal(578.9, store.Snapshot().Seats[1].Score);
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public sealed class ContinuousMonitoringTests : IDisposable
         Assert.Equal("running", resumed.State); Assert.NotEqual(command.SessionId, resumed.SessionId);
         Assert.Null(resumed.CalibrationId); Assert.Equal("01", resumed.Seat);
         store.Report(id, new("new-boot", 2, resumed.SessionId, "ok", "other-mic", -35, -25, 0));
-        Assert.Equal(88.2, store.Snapshot().Seats[0].Score);
+        Assert.Equal(894.7, store.Snapshot().Seats[0].Score);
     }
 
     [Fact]
@@ -59,13 +59,18 @@ public sealed class ContinuousMonitoringTests : IDisposable
         Assert.Equal(0d, store.Snapshot().Seats[0].Score);
         clock.Advance(1);
         store.Report(id, new("boot", 3, command.SessionId, "ok", "mic", -85, -75, 0));
-        Assert.Equal(29.4, store.Snapshot().Seats[0].Score);
+        Assert.Equal(368.4, store.Snapshot().Seats[0].Score);
         store.Report(id, new("boot", 4, command.SessionId, "no_signal", "mic", -120, -120, 0));
+        // Older students may label a weak but nonzero input as no_signal.
+        store.Report(id, new("boot", 5, command.SessionId, "no_signal", "mic", -115, -110, 0));
+        Assert.Equal(52.6, store.Snapshot().Seats[0].Score);
+        Assert.Equal(10, store.Snapshot().VolumeGain);
+        store.Report(id, new("boot", 6, command.SessionId, "no_signal", "mic", -120, -120, 0));
         Assert.Equal(0d, store.Snapshot().Seats[0].Score);
         clock.Advance(11);
         Assert.Null(store.Snapshot().Seats[0].Score);
         store.SaveLayout(new([["02"]]));
-        Assert.Equal("idle", store.Report(id, new("boot", 5, command.SessionId, "idle", "mic")).State);
+        Assert.Equal("idle", store.Report(id, new("boot", 7, command.SessionId, "idle", "mic")).State);
     }
 
     [Fact]
@@ -74,8 +79,8 @@ public sealed class ContinuousMonitoringTests : IDisposable
         var id = Enroll('A', "seat-01");
         var command = store.Report(id, new("boot", 1, null, "idle", "mic"));
         store.Report(id, new("boot", 2, command.SessionId, "ok", "mic", -25, -15, 0));
-        Assert.Equal(100d, store.Snapshot().Seats[0].Score);
-        var previous = 100d;
+        Assert.Equal(1000d, store.Snapshot().Seats[0].Score);
+        var previous = 1000d;
         for (var i = 0; i < 4; i++)
         {
             clock.Advance(1);
@@ -89,7 +94,7 @@ public sealed class ContinuousMonitoringTests : IDisposable
             clock.Advance(1);
             store.Report(id, new("boot", i + 7, command.SessionId, "ok", "mic", -85, -75, 0));
         }
-        Assert.InRange(store.Snapshot().Seats[0].Score!.Value, 29, 32);
+        Assert.InRange(store.Snapshot().Seats[0].Score!.Value, 368, 385);
         store.Report(id, new("boot", 17, command.SessionId, "no_signal", "mic", -120, -120, 0));
         Assert.Equal(0d, store.Snapshot().Seats[0].Score);
     }
@@ -151,7 +156,7 @@ public sealed class ContinuousMonitoringTests : IDisposable
         store.Calibrate();
         store.SaveCalibration(id, new(command.SessionId!, store.Snapshot().CalibrationId!, "mic", -40, 10));
         store.Report(id, new("boot", 2, command.SessionId, "ok", "mic", -65, -55, 0));
-        Assert.Equal(52.9, store.Snapshot().Seats[0].Score);
+        Assert.Equal(578.9, store.Snapshot().Seats[0].Score);
     }
     public void Dispose()
     {

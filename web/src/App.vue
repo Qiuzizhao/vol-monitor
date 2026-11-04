@@ -40,7 +40,8 @@ const seatMap=computed(()=>new Map(data.value?.seats.map(s=>[`${s.row}:${s.colum
 const seatAt=(row:number,col:number)=>seatMap.value.get(`${row}:${col}`);
 const statuses:Record<string,string>={duplicate:'座位重复',ok:'在线',unbound:'未分配座位',offline:'离线',stale:'连接中断',idle:'连接中',error:'麦克风异常',uncalibrated:'连接中',blocked:'请更新客户端',no_signal:'无输入',calibrating:'连接中'};
 const score=(n:number|null|undefined)=>n==null?'—':n>0&&n<10?n.toFixed(1):Math.round(n);
-const tone=(n:number|null)=>n===null?'none':n>=70?'loud':n>=40?'medium':'quiet';
+const volumeGain=computed(()=>data.value?.volumeGain??1);
+const tone=(n:number|null)=>n===null?'none':n>=70*volumeGain.value?'loud':n>=40*volumeGain.value?'medium':'quiet';
 function toast(text:string){notice.value=text;clearTimeout(toastTimer);toastTimer=setTimeout(()=>notice.value='',4500);}
 async function request(path:string,method='GET',body?:unknown){
  const response=await fetch(path,{method,credentials:'same-origin',headers:{'Content-Type':'application/json','X-RoomScope':'1'},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(10000)});
@@ -87,7 +88,7 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
     <section class="toolbar"><div class="page-heading"><h1>实时音量</h1><span>音量指数</span><span v-if="offline" class="offline-count">{{offline}} 台离线</span></div><button class="button" @click="editingLayout=true">座位布局</button></section>
     <section class="panel seat-panel" :class="{'outdated':!connected}"><div class="classroom"><div class="seat-rows"><div v-for="row in rows" :key="row" class="seat-row" :style="{'--columns':columns}">
      <template v-for="col in columns" :key="col"><div v-if="seatAt(row,col)" class="seat" :class="[tone(seatAt(row,col)!.score),{'seat-error':['error','blocked','stale','duplicate'].includes(seatAt(row,col)!.status)}]" :aria-label="`座位 ${seatAt(row,col)!.label}，${statuses[seatAt(row,col)!.status]}${seatAt(row,col)!.status==='duplicate'?'': '，音量 '+score(seatAt(row,col)!.score)}`" :title="seatAt(row,col)!.deviceName??statuses[seatAt(row,col)!.status]">
-      <span class="seat-label">{{seatAt(row,col)!.label}}<small>号</small></span><strong v-if="seatAt(row,col)!.status==='duplicate'" class="seat-duplicate-label">座位重复</strong><template v-else><strong>{{score(seatAt(row,col)!.score)}}</strong><small v-if="seatAt(row,col)!.score===null" class="seat-state">{{statuses[seatAt(row,col)!.status]}}</small><div v-else class="seat-meter" aria-hidden="true"><i :style="{width:`${Math.min(100,seatAt(row,col)!.score!)}%`}"></i></div></template>
+      <span class="seat-label">{{seatAt(row,col)!.label}}<small>号</small></span><strong v-if="seatAt(row,col)!.status==='duplicate'" class="seat-duplicate-label">座位重复</strong><template v-else><strong :class="{'volume-large':(seatAt(row,col)!.score??0)>=1000}">{{score(seatAt(row,col)!.score)}}</strong><small v-if="seatAt(row,col)!.score===null" class="seat-state">{{statuses[seatAt(row,col)!.status]}}</small><div v-else class="seat-meter" aria-hidden="true"><i :style="{width:`${Math.min(100,seatAt(row,col)!.score!/volumeGain)}%`}"></i></div></template>
      </div><div v-else class="aisle-cell" aria-hidden="true"></div></template>
     </div></div><div class="teacher-desk"><span>讲台</span></div></div></section>
    </template>

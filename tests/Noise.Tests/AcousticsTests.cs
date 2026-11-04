@@ -7,16 +7,18 @@ public sealed class AcousticsTests
 {
     [Theory]
     [InlineData(-120, 0)]
-    [InlineData(-110, 0)]
-    [InlineData(-109.5, 0.6)]
-    [InlineData(-90, 23.5)]
-    [InlineData(-85, 29.4)]
-    [InlineData(-65, 52.9)]
-    [InlineData(-25, 100)]
-    [InlineData(-20, 105.9)]
-    [InlineData(-15, 111.8)]
-    [InlineData(-5, 123.5)]
-    [InlineData(0, 129.4)]
+    [InlineData(-119.9, 1.1)]
+    [InlineData(-115, 52.6)]
+    [InlineData(-110, 105.3)]
+    [InlineData(-109.5, 110.5)]
+    [InlineData(-90, 315.8)]
+    [InlineData(-85, 368.4)]
+    [InlineData(-65, 578.9)]
+    [InlineData(-25, 1000)]
+    [InlineData(-20, 1052.6)]
+    [InlineData(-15, 1105.3)]
+    [InlineData(-5, 1210.5)]
+    [InlineData(0, 1263.2)]
     public void DirectMicrophoneScoreHasNoRoomBaseline(double level, double expected) =>
         Assert.Equal(expected, Acoustics.InputScore(level));
 
@@ -24,7 +26,7 @@ public sealed class AcousticsTests
     public void LoudInputKeepsRisingBeyondOneHundred()
     {
         var scores = Enumerable.Range(0, 26).Select(i => Acoustics.InputScore(-25 + i)).ToArray();
-        Assert.Equal(100, scores[0]);
+        Assert.Equal(1000, scores[0]);
         for (var i = 1; i < scores.Length; i++) Assert.True(scores[i] > scores[i - 1]);
     }
 
@@ -71,17 +73,19 @@ public sealed class AcousticsTests
         Assert.InRange(Acoustics.Percentile(scores, .7), 23, 24);
     }
 
-    [Fact]
-    public void AlertRequiresContinuousNoiseAndClearsWithHysteresis()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(10)]
+    public void AlertRequiresContinuousNoiseAndClearsWithHysteresis(double gain)
     {
         var latch = new AlertLatch();
         var start = DateTimeOffset.UtcNow;
-        for (var i = 0; i < 5; i++) Assert.False(latch.Update(80, start.AddSeconds(i), 70));
-        Assert.True(latch.Update(80, start.AddSeconds(5), 70));
-        Assert.True(latch.Update(60, start.AddSeconds(6), 70));
-        Assert.True(latch.Update(40, start.AddSeconds(7), 70));
-        Assert.True(latch.Update(40, start.AddSeconds(9), 70));
-        Assert.False(latch.Update(40, start.AddSeconds(10), 70));
+        for (var i = 0; i < 5; i++) Assert.False(latch.Update(80 * gain, start.AddSeconds(i), 70 * gain, 20 * gain));
+        Assert.True(latch.Update(80 * gain, start.AddSeconds(5), 70 * gain, 20 * gain));
+        Assert.True(latch.Update(60 * gain, start.AddSeconds(6), 70 * gain, 20 * gain));
+        Assert.True(latch.Update(40 * gain, start.AddSeconds(7), 70 * gain, 20 * gain));
+        Assert.True(latch.Update(40 * gain, start.AddSeconds(9), 70 * gain, 20 * gain));
+        Assert.False(latch.Update(40 * gain, start.AddSeconds(10), 70 * gain, 20 * gain));
     }
 
     [Fact]

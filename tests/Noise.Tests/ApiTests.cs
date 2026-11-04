@@ -190,7 +190,7 @@ public sealed class ApiTests
         Assert.Null(snapshot.CalibrationId);
         Assert.Equal(HttpStatusCode.OK,(await agent.PostAsJsonAsync("/api/telemetry",new DeviceReport("boot",2,sessionId,"ok","mic",-35,-25,0))).StatusCode);
         snapshot = (await teacher.GetFromJsonAsync<Dashboard>("/api/teacher/dashboard"))!;
-        Assert.Equal(88.2,snapshot.Seats[0].Score);
+        Assert.Equal(894.7,snapshot.Seats[0].Score);
         Assert.Equal(HttpStatusCode.OK,(await teacher.PostAsJsonAsync("/api/teacher/annotations", new AnnotationRequest("播放测试音源"))).StatusCode);
         var export = await teacher.GetAsync($"/api/teacher/sessions/{sessionId}/experiment.json");
         Assert.Equal("application/json",export.Content.Headers.ContentType!.MediaType);
