@@ -40,4 +40,7 @@ public sealed record Annotation(string Id, string SessionId, DateTimeOffset Time
 public sealed record Dashboard(string RoomName, DateTimeOffset ServerTime, string AlgorithmVersion,
     ResearchSession? Session, string? CalibrationId, DateTimeOffset? CalibrationUntil,
     SeatView[] Seats, ZoneView[] Zones, DeviceView[] Devices, TrendPoint[] Trend,
-    Annotation[] Annotations, int LayoutRows = 6, int LayoutColumns = 6, double VolumeGain = 1, bool SequentialMatching = false);
+    Annotation[] Annotations, int LayoutRows = 6, int LayoutColumns = 6, double VolumeGain = 1, bool SequentialMatching = false)
+{
+    public IpSequenceGap[] IpGaps { get; init; } = [];
+}

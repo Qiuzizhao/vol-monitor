@@ -14,7 +14,7 @@ function setup(canMatch=true){
     path.endsWith('/match-seats')?{matched:4,changed:4}:fixture;
    return {ok:true,text:async()=>JSON.stringify(result)};
   }};
- vm.runInNewContext(ts.transpileModule(source+'\nglobalThis.controller={data,matchReview,matchSeats,cancelMatching,confirmMatching};',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
+ vm.runInNewContext(ts.transpileModule(source+'\nglobalThis.controller={data,matchReview,matchSeats,cancelMatching,confirmMatching,ipGaps,missingIpCount,deviceSearch,deviceFilter,visibleDevices};',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
  context.controller.data.value=fixture;return {controller:context.controller,calls};
 }
 test('clicking sequential matching only checks IPs; cancel does not apply assignments',async()=>{
@@ -35,4 +35,22 @@ test('recheck refreshes review state before confirmation',async()=>{
 test('insufficient capacity cannot be confirmed',async()=>{
  const {controller,calls}=setup(false);await controller.matchSeats();await controller.confirmMatching();
  assert.equal(calls.length,1);assert.notEqual(controller.matchReview.value,null);
+});
+
+test('persistent gap warning tracks live snapshots and clears when missing IPs arrive',()=>{
+ const {controller,calls}=setup();assert.equal(controller.ipGaps.value.length,0);
+ const gap={before:'192.168.1.10',after:'192.168.1.13',missingFrom:'192.168.1.11',missingTo:'192.168.1.12',count:2};
+ controller.data.value={devices:[],seats:[],ipGaps:[gap]};
+ assert.equal(controller.ipGaps.value[0].missingFrom,gap.missingFrom);assert.equal(controller.missingIpCount.value,2);
+ controller.data.value={devices:[],seats:[],ipGaps:[]};
+ assert.equal(controller.ipGaps.value.length,0);assert.equal(controller.missingIpCount.value,0);assert.equal(calls.length,0);
+});
+
+test('gap warning uses the whole classroom even when the student list is filtered',()=>{
+ const {controller}=setup();
+ controller.data.value={devices:[{name:'192.168.1.10',status:'ok',seatId:null}],seats:[],ipGaps:[
+  {before:'192.168.1.10',after:'192.168.1.12',missingFrom:'192.168.1.11',missingTo:'192.168.1.11',count:1},
+  {before:'192.168.1.12',after:'192.168.1.15',missingFrom:'192.168.1.13',missingTo:'192.168.1.14',count:2}]};
+ controller.deviceSearch.value='no match';controller.deviceFilter.value='offline';
+ assert.equal(controller.visibleDevices.value.length,0);assert.equal(controller.ipGaps.value.length,2);assert.equal(controller.missingIpCount.value,3);
 });

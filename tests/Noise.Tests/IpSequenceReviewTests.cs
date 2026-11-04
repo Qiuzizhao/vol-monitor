@@ -77,6 +77,30 @@ public sealed class IpSequenceReviewTests : IDisposable
     }
 
     [Fact]
+    public void DashboardShowsLiveGapsWithoutMatchingAndClearsThemWhenMissingIpsConnect()
+    {
+        using(var store=Open())
+        {
+            Assert.Empty(store.Snapshot().IpGaps);
+            store.ConnectAddress("192.168.1.101");store.ConnectAddress("192.168.1.104");
+            var snapshot=store.Snapshot();
+            Assert.Equal(store.PreviewSequentialMatch().Gaps,snapshot.IpGaps);
+            Assert.Equal(2,Assert.Single(snapshot.IpGaps).Count);
+            Assert.False(snapshot.SequentialMatching);
+            store.ConnectAddress("192.168.1.102");
+            var gap=Assert.Single(store.Snapshot().IpGaps);
+            Assert.Equal("192.168.1.103",gap.MissingFrom);Assert.Equal(1,gap.Count);
+            clock.Advance(11);
+            Assert.Equal(gap,Assert.Single(store.Snapshot().IpGaps));
+            store.ConnectAddress("192.168.1.103");
+            Assert.Empty(store.Snapshot().IpGaps);
+        }
+        using var reopened=Open();
+        Assert.Empty(reopened.Snapshot().IpGaps);
+        Assert.False(reopened.SequentialMatching);
+    }
+
+    [Fact]
     public async Task ApiRejectsBypassingReviewAndRequiresCsrfForPreview()
     {
         using var factory=new AppFactory(automaticIpEnrollment:true);using var client=factory.Client();

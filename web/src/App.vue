@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
-import type { Dashboard, Device } from './types';
+import type { Dashboard, Device, IpSequenceGap } from './types';
 
 import SeatLayout from './SeatLayout.vue';
 import StudentSetup from './StudentSetup.vue';
@@ -12,6 +12,8 @@ const local=['127.0.0.1','localhost','[::1]'].includes(location.hostname);
 let socket:WebSocket|null=null,retry:ReturnType<typeof setTimeout>|undefined,toastTimer:ReturnType<typeof setTimeout>|undefined;
 const online=computed(()=>data.value?.devices.filter(d=>d.status!=='offline').length??0);
 const offline=computed(()=>data.value?.devices.filter(d=>d.status==='offline').length??0);
+const ipGaps=computed(()=>data.value?.ipGaps??[]);
+const missingIpCount=computed(()=>ipGaps.value.reduce((sum,gap)=>sum+gap.count,0));
 const deviceSearch=ref(''),deviceFilter=ref('all');
 const seatLabel=(id:string|null)=>data.value?.seats.find(s=>s.id===id)?.label??'';
 const seatOrder=new Intl.Collator('zh-CN',{numeric:true});
@@ -40,7 +42,7 @@ const removingDevice=ref<Device|null>(null),removeCancel=ref<HTMLButtonElement|n
 const removingSeat=computed(()=>data.value?.seats.find(s=>s.id===removingDevice.value?.seatId)?.label);
 interface SeatShiftChoice {deviceId:string;seatId:string;ip:string;from:string;to:string;followingCount:number;expectedState:string;canShift:boolean;error:string|null;examples:{ip:string;from:string;to:string}[]}
 const seatShift=ref<SeatShiftChoice|null>(null),shiftCancel=ref<HTMLButtonElement|null>(null);
-interface MatchReview {students:number;seats:number;checkedPairs:number;addressGroups:number;uncheckedAddresses:number;gaps:{before:string;after:string;missingFrom:string;missingTo:string;count:number}[];offlineIps:string[];canMatch:boolean;error:string|null;expectedState:string}
+interface MatchReview {students:number;seats:number;checkedPairs:number;addressGroups:number;uncheckedAddresses:number;gaps:IpSequenceGap[];offlineIps:string[];canMatch:boolean;error:string|null;expectedState:string}
 const matchReview=ref<MatchReview|null>(null),matchCancel=ref<HTMLButtonElement|null>(null);
 let removeTrigger:HTMLButtonElement|null=null;
 const seatMap=computed(()=>new Map(data.value?.seats.map(s=>[`${s.row}:${s.column}`,s])));
@@ -135,6 +137,11 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
     <section class="toolbar"><div class="page-heading"><h1>学生机管理</h1><span>{{data.devices.length}} 台已接入</span></div><div v-if="local" class="actions"><button class="button primary" @click="studentSetup='package'">生成学生端</button><button class="button" @click="studentSetup='password'">维护密码</button></div></section>
 
     <p v-if="!data.devices.length" class="empty">等待学生机自动连接</p>
+    <section v-if="ipGaps.length" class="ip-warning" aria-labelledby="ip-warning-title">
+     <header><h2 id="ip-warning-title">IP 跳号异常</h2><span>{{ipGaps.length}} 处跳号 · 缺少 {{missingIpCount}} 个 IP</span></header>
+     <ul><li v-for="gap in ipGaps" :key="gap.before"><span class="ip-gap-range">{{gap.before}} → {{gap.after}}</span><span>缺少 IP：<strong>{{gap.missingFrom}}{{gap.count>1?' ～ '+gap.missingTo:''}}</strong></span></li></ul>
+     <p>请检查对应学生机是否已连接。</p>
+    </section>
     <section v-if="data.devices.length" class="panel devices-panel"><div class="panel-heading"><h2>已接入学生机</h2><div class="device-filters"><button class="button" @click="matchSeats" :disabled="busy||!connected" title="先检查 IP 跳号，再确认按 IP 顺序重新分配全部学生机（含离线）的座位">顺序匹配</button><input v-model="deviceSearch" type="search" placeholder="搜索 IP 或座位" aria-label="搜索学生机" @keydown.esc="deviceSearch=''"/><select v-model="deviceFilter" aria-label="筛选学生机状态"><option value="all">全部状态</option><option value="online">在线 {{online}}</option><option value="offline">离线 {{offline}}</option></select></div></div>
      <div class="table-scroll"><table><thead><tr><th :aria-sort="deviceSort==='ip'?(sortDescending?'descending':'ascending'):'none'"><button class="sort-button" @click="sortDevices('ip')" :title="deviceSort==='ip'&&!sortDescending?'按 IP 从大到小排序':'按 IP 从小到大排序'">学生机 IP <span aria-hidden="true">{{sortIndicator('ip')}}</span></button></th><th :aria-sort="deviceSort==='seat'?(sortDescending?'descending':'ascending'):'none'"><button class="sort-button" @click="sortDevices('seat')" :title="deviceSort==='seat'&&!sortDescending?'按座位从大到小排序':'按座位从小到大排序'">座位 <span aria-hidden="true">{{sortIndicator('seat')}}</span></button></th><th>状态</th><th class="operation-heading">操作</th></tr></thead><tbody><tr v-for="device in visibleDevices" :key="device.id"><td class="device-ip">{{device.name}}</td><td><select :value="device.seatId??''" :aria-label="`${device.name} 的座位`" @change="bind(device,$event)" :disabled="busy||!connected"><option value="" disabled>分配座位</option><option v-for="seat in data.seats" :key="seat.id" :value="seat.id">{{seat.label}} 号</option></select></td><td><span class="device-status" :class="device.status"><i aria-hidden="true"></i>{{statuses[device.status]??device.status}}</span></td><td class="operation-cell"><button class="text-button danger" @click="remove(device)" :disabled="busy||!connected">移除</button></td></tr><tr v-if="!visibleDevices.length"><td colspan="4" class="empty">没有匹配的学生机</td></tr></tbody></table></div>
     </section>

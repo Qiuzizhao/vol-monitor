@@ -342,7 +342,8 @@ public sealed partial class RoomStore : IDisposable
             return new(RoomName, now, Acoustics.AlgorithmVersion, session, calibrationId,
                 calibrationUntil, seats, ZoneViews(seats, now, false),
                 devices.Values.Where(d => !d.Demo).Select(d => new DeviceView(d.Id, d.IpAddress ?? "未连接", d.SeatId, Status(d, now), d.MicrophoneId, d.Baseline, d.LastSeen)).ToArray(),
-                trend.ToArray(), annotations.TakeLast(30).Reverse().ToArray(), LayoutRows, LayoutColumns, continuousMonitoring ? Acoustics.InputGain : 1, SequentialMatching);
+                trend.ToArray(), annotations.TakeLast(30).Reverse().ToArray(), LayoutRows, LayoutColumns, continuousMonitoring ? Acoustics.InputGain : 1, SequentialMatching)
+            { IpGaps = CheckIpSequence(devices.Values.Where(d => !d.Demo)).Gaps };
         }
     }
 
