@@ -40,6 +40,8 @@ const removingDevice=ref<Device|null>(null),removeCancel=ref<HTMLButtonElement|n
 const removingSeat=computed(()=>data.value?.seats.find(s=>s.id===removingDevice.value?.seatId)?.label);
 interface SeatShiftChoice {deviceId:string;seatId:string;ip:string;from:string;to:string;followingCount:number;expectedState:string;canShift:boolean;error:string|null;examples:{ip:string;from:string;to:string}[]}
 const seatShift=ref<SeatShiftChoice|null>(null),shiftCancel=ref<HTMLButtonElement|null>(null);
+interface MatchReview {students:number;seats:number;checkedPairs:number;addressGroups:number;uncheckedAddresses:number;gaps:{before:string;after:string;missingFrom:string;missingTo:string;count:number}[];offlineIps:string[];canMatch:boolean;error:string|null;expectedState:string}
+const matchReview=ref<MatchReview|null>(null),matchCancel=ref<HTMLButtonElement|null>(null);
 let removeTrigger:HTMLButtonElement|null=null;
 const seatMap=computed(()=>new Map(data.value?.seats.map(s=>[`${s.row}:${s.column}`,s])));
 const seatAt=(row:number,col:number)=>seatMap.value.get(`${row}:${col}`);
@@ -83,10 +85,18 @@ async function applySeatShift(following:boolean){
   seatShift.value=null;await refresh();toast(following?`已修改本机，并顺延后续 ${choice.followingCount} 台学生机。`:'已修改本机座位。');
  });
 }
-async function matchSeats(){await perform(async()=>{
- const result=await api('/devices/match-seats','POST');await refresh();deviceSort.value='ip';sortDescending.value=false;
+async function matchSeats(){
+ await perform(async()=>{matchReview.value=await api('/devices/match-preview','POST');});
+ if(matchReview.value){await nextTick();matchCancel.value?.focus();}
+}
+function cancelMatching(){if(!busy.value)matchReview.value=null;}
+async function confirmMatching(){
+ const review=matchReview.value;if(!review?.canMatch)return;
+ await perform(async()=>{
+ const result=await api('/devices/match-seats','POST',{expectedState:review.expectedState});matchReview.value=null;await refresh();deviceSort.value='ip';sortDescending.value=false;
  toast(result.changed?`已按 IP 顺序匹配 ${result.matched} 台学生机。`:'当前座位已按 IP 顺序匹配。');
-});}
+ });
+}
 async function remove(device:Device){
  if(busy.value)return;
  removeTrigger=document.activeElement instanceof HTMLButtonElement?document.activeElement:null;
@@ -125,7 +135,7 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
     <section class="toolbar"><div class="page-heading"><h1>学生机管理</h1><span>{{data.devices.length}} 台已接入</span></div><div v-if="local" class="actions"><button class="button primary" @click="studentSetup='package'">生成学生端</button><button class="button" @click="studentSetup='password'">维护密码</button></div></section>
 
     <p v-if="!data.devices.length" class="empty">等待学生机自动连接</p>
-    <section v-if="data.devices.length" class="panel devices-panel"><div class="panel-heading"><h2>已接入学生机</h2><div class="device-filters"><button class="button" @click="matchSeats" :disabled="busy||!connected" title="按 IP 升序匹配全部学生机（含离线），按座位名称升序重新分配，覆盖原座位安排">顺序匹配</button><input v-model="deviceSearch" type="search" placeholder="搜索 IP 或座位" aria-label="搜索学生机" @keydown.esc="deviceSearch=''"/><select v-model="deviceFilter" aria-label="筛选学生机状态"><option value="all">全部状态</option><option value="online">在线 {{online}}</option><option value="offline">离线 {{offline}}</option></select></div></div>
+    <section v-if="data.devices.length" class="panel devices-panel"><div class="panel-heading"><h2>已接入学生机</h2><div class="device-filters"><button class="button" @click="matchSeats" :disabled="busy||!connected" title="先检查 IP 跳号，再确认按 IP 顺序重新分配全部学生机（含离线）的座位">顺序匹配</button><input v-model="deviceSearch" type="search" placeholder="搜索 IP 或座位" aria-label="搜索学生机" @keydown.esc="deviceSearch=''"/><select v-model="deviceFilter" aria-label="筛选学生机状态"><option value="all">全部状态</option><option value="online">在线 {{online}}</option><option value="offline">离线 {{offline}}</option></select></div></div>
      <div class="table-scroll"><table><thead><tr><th :aria-sort="deviceSort==='ip'?(sortDescending?'descending':'ascending'):'none'"><button class="sort-button" @click="sortDevices('ip')" :title="deviceSort==='ip'&&!sortDescending?'按 IP 从大到小排序':'按 IP 从小到大排序'">学生机 IP <span aria-hidden="true">{{sortIndicator('ip')}}</span></button></th><th :aria-sort="deviceSort==='seat'?(sortDescending?'descending':'ascending'):'none'"><button class="sort-button" @click="sortDevices('seat')" :title="deviceSort==='seat'&&!sortDescending?'按座位从大到小排序':'按座位从小到大排序'">座位 <span aria-hidden="true">{{sortIndicator('seat')}}</span></button></th><th>状态</th><th class="operation-heading">操作</th></tr></thead><tbody><tr v-for="device in visibleDevices" :key="device.id"><td class="device-ip">{{device.name}}</td><td><select :value="device.seatId??''" :aria-label="`${device.name} 的座位`" @change="bind(device,$event)" :disabled="busy||!connected"><option value="" disabled>分配座位</option><option v-for="seat in data.seats" :key="seat.id" :value="seat.id">{{seat.label}} 号</option></select></td><td><span class="device-status" :class="device.status"><i aria-hidden="true"></i>{{statuses[device.status]??device.status}}</span></td><td class="operation-cell"><button class="text-button danger" @click="remove(device)" :disabled="busy||!connected">移除</button></td></tr><tr v-if="!visibleDevices.length"><td colspan="4" class="empty">没有匹配的学生机</td></tr></tbody></table></div>
     </section>
    </template>
@@ -133,6 +143,7 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
  </template>
  <SeatLayout v-if="editingLayout&&data" :seats="data.seats" :rows="data.layoutRows" :columns="data.layoutColumns" :busy="busy" @close="editingLayout=false" @save="saveLayout"/>
  <StudentSetup v-if="studentSetup" :mode="studentSetup" :api="api" @close="studentSetup=null" @notice="toast"/>
+ <div v-if="matchReview" class="layout-overlay" @keydown.esc.prevent="cancelMatching"><section class="layout-editor matching-dialog" role="dialog" aria-modal="true" aria-labelledby="match-review-title"><header class="layout-tools"><strong id="match-review-title">顺序匹配前检查</strong></header><div class="matching-review"><p>{{matchReview.students}} 台学生机 · {{matchReview.seats}} 个座位</p><template v-if="matchReview.gaps.length"><strong class="danger">发现 IP 跳号，请核对是否有机器未连接</strong><ul class="ip-gaps"><li v-for="gap in matchReview.gaps" :key="gap.before"><span>{{gap.before}} → {{gap.after}}</span><small>缺少：{{gap.missingFrom}}{{gap.count>1?' ～ '+gap.missingTo:''}}（{{gap.count}} 个）</small></li></ul></template><p v-else>{{matchReview.checkedPairs?'未发现已登记 IP 之间有跳号。':'现有 IP 不足以判断是否连号。'}}</p><p v-if="matchReview.offlineIps.length" class="danger">已登记但离线 {{matchReview.offlineIps.length}} 台（仍参与匹配）：<span class="ip-list">{{matchReview.offlineIps.join('、')}}</span></p><p v-if="matchReview.uncheckedAddresses">另有 {{matchReview.uncheckedAddresses}} 个地址未进行连号判断。</p><p class="matching-note">仅检查同一号段内已登记 IP 之间的缺号，不推测首尾缺机。继续后会覆盖原安排，按现有学生机依次分配座位。</p><p v-if="matchReview.error" class="danger">{{matchReview.error}}</p></div><footer class="layout-footer"><button ref="matchCancel" class="button" @click="cancelMatching" :disabled="busy">取消</button><button class="text-button" @click="matchSeats" :disabled="busy||!connected">重新检查</button><button class="button primary" @click="confirmMatching" :disabled="busy||!connected||!matchReview.canMatch">确认匹配</button></footer></section></div>
  <div v-if="seatShift" class="layout-overlay" @keydown.esc.prevent="cancelSeatShift"><section class="layout-editor password-dialog" role="dialog" aria-modal="true" aria-labelledby="seat-shift-title"><header class="layout-tools"><strong id="seat-shift-title">后续座位一起顺延？</strong></header><div class="password-fields"><strong>{{seatShift.ip}} · {{seatShift.from}} → {{seatShift.to}}</strong><p>已使用顺序匹配。可将后续 {{seatShift.followingCount}} 台学生机一起往后移，此前座位保持原样。</p><p v-if="seatShift.examples.length">{{seatShift.examples.map(e=>`${e.from} → ${e.to}`).join('，')}}</p><p v-if="seatShift.error" class="password-error">{{seatShift.error}}</p></div><footer class="layout-footer"><button ref="shiftCancel" class="button" @click="cancelSeatShift" :disabled="busy">取消</button><button class="button" @click="applySeatShift(false)" :disabled="busy||!connected">仅修改本机</button><button class="button primary" @click="applySeatShift(true)" :disabled="busy||!connected||!seatShift.canShift">后续一起顺延</button></footer></section></div>
  <div v-if="removingDevice" class="layout-overlay" @keydown.esc.prevent="cancelRemove"><section class="layout-editor password-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-device-title" aria-describedby="remove-device-detail"><header class="layout-tools"><strong id="remove-device-title">确认移除学生机？</strong></header><div id="remove-device-detail" class="password-fields"><strong>{{removingDevice.name}} · {{removingSeat?removingSeat+' 号座位':'未分配座位'}}</strong><p>仅从列表移除，学生机继续连接时会自动出现。</p></div><footer class="layout-footer"><button ref="removeCancel" class="button" @click="cancelRemove" :disabled="busy">取消</button><button class="button danger" @click="confirmRemove" :disabled="busy">{{busy?'正在移除……':'确认移除'}}</button></footer></section></div>
  <div v-if="notice" class="toast" role="status">{{notice}}<button aria-label="关闭提示" @click="notice=''">关闭</button></div>

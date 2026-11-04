@@ -70,7 +70,8 @@ public sealed class SequentialAssignmentTests : IDisposable
         await client.PostAsJsonAsync("/api/telemetry",new DeviceReport("boot",1,null,"idle","mic"));
         Assert.Equal(HttpStatusCode.Forbidden,(await client.PostAsync("/api/teacher/devices/match-seats",null)).StatusCode);
         client.DefaultRequestHeaders.Add("X-RoomScope","1");
-        var response=await client.PostAsync("/api/teacher/devices/match-seats",null);
+        var preview=(await (await client.PostAsync("/api/teacher/devices/match-preview",null)).Content.ReadFromJsonAsync<SequentialMatchPreview>())!;
+        var response=await client.PostAsJsonAsync("/api/teacher/devices/match-seats",new MatchConfirmation(preview.ExpectedState));
         Assert.Equal(HttpStatusCode.OK,response.StatusCode);
         Assert.Equal(1,(await response.Content.ReadFromJsonAsync<SequentialMatchResult>())!.Matched);
     }
