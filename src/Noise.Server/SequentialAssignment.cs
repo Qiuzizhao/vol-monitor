@@ -6,6 +6,7 @@ public sealed record SequentialMatchResult(int Matched, int Changed);
 
 public sealed partial class RoomStore
 {
+    public bool SequentialMatching { get; private set; }
     public SequentialMatchResult MatchSeatsInOrder()
     {
         lock (gate)
@@ -22,7 +23,9 @@ public sealed partial class RoomStore
             using var transaction = db.BeginTransaction();
             foreach (var p in changes)
                 Exec("UPDATE devices SET seat_id=$seat WHERE id=$id", ("$seat", p.Seat.Id), ("$id", p.Device.Id));
+            Exec("INSERT INTO room_matching VALUES(1,1) ON CONFLICT(id) DO UPDATE SET enabled=1");
             transaction.Commit();
+            SequentialMatching = true;
             foreach (var p in changes) p.Device.SeatId = p.Seat.Id;
             return new(ordered.Length, changes.Length);
         }

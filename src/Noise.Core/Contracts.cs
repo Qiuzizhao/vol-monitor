@@ -10,7 +10,7 @@ public record CalibrationReport(string SessionId, string CalibrationId, string M
     double BaselineDbfs, int SampleCount);
 public record SessionRequest(string Name, string Mode = "quiet", bool Demo = false);
 public record AnnotationRequest(string Text);
-public record SeatAssignment(string SeatId);
+public record SeatAssignment(string SeatId, string? ExpectedState = null);
 public record EnrollmentRequest(string Name, string HardwareFingerprint);
 public record EnrollmentState(string Status, string? RequestId, string? DeviceId);
 public record EnrollmentWindow(bool Open, DateTimeOffset? ClosesAt, bool Automatic = false);

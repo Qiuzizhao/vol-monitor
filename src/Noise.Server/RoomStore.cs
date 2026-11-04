@@ -58,8 +58,10 @@ public sealed partial class RoomStore : IDisposable
             CREATE TABLE IF NOT EXISTS device_addresses(device_id TEXT PRIMARY KEY,ip_address TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS enrollment_addresses(request_id TEXT PRIMARY KEY,ip_address TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS room_layout(id INTEGER PRIMARY KEY,rows INTEGER,columns INTEGER);
+            CREATE TABLE IF NOT EXISTS room_matching(id INTEGER PRIMARY KEY,enabled INTEGER NOT NULL);
             """
         );
+        SequentialMatching = Convert.ToInt64(Scalar("SELECT enabled FROM room_matching WHERE id=1") ?? 0) == 1;
         // Close the previous process's internal session before initializing live monitoring.
         Exec("UPDATE sessions SET status='ended',ended_at=$now WHERE status!='ended'", ("$now", Now.ToString("O")));
         if (Convert.ToInt32(Scalar("SELECT COUNT(*) FROM seats"), CultureInfo.InvariantCulture) == 0)
@@ -112,14 +114,14 @@ public sealed partial class RoomStore : IDisposable
         lock (gate) return tokens.GetValueOrDefault(TeacherAccess.TokenHash(token));
     }
 
-    public void Assign(string id, string seatId)
+    public void Assign(string id, string seatId, string? expectedState = null)
     {
         lock (gate)
         {
+            CheckSeatState(expectedState);
             if (!devices.TryGetValue(id, out var d) || d.Demo) throw new ArgumentException("设备不存在。");
             if (!Seats.Any(s => s.Id == seatId)) throw new ArgumentException("座位不存在。");
             d.SeatId = seatId;
-            d.Level = d.Smoothed = null; d.LastSample = null;
             Exec("UPDATE devices SET seat_id=$seat WHERE id=$id", ("$seat", seatId), ("$id", id));
         }
     }
@@ -340,7 +342,7 @@ public sealed partial class RoomStore : IDisposable
             return new(RoomName, now, Acoustics.AlgorithmVersion, session, calibrationId,
                 calibrationUntil, seats, ZoneViews(seats, now, false),
                 devices.Values.Where(d => !d.Demo).Select(d => new DeviceView(d.Id, d.IpAddress ?? "未连接", d.SeatId, Status(d, now), d.MicrophoneId, d.Baseline, d.LastSeen)).ToArray(),
-                trend.ToArray(), annotations.TakeLast(30).Reverse().ToArray(), LayoutRows, LayoutColumns, continuousMonitoring ? Acoustics.InputGain : 1);
+                trend.ToArray(), annotations.TakeLast(30).Reverse().ToArray(), LayoutRows, LayoutColumns, continuousMonitoring ? Acoustics.InputGain : 1, SequentialMatching);
         }
     }
 

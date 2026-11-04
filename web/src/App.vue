@@ -38,6 +38,8 @@ const editingLayout=ref(false);
 const studentSetup=ref<'package'|'password'|null>(null);
 const removingDevice=ref<Device|null>(null),removeCancel=ref<HTMLButtonElement|null>(null);
 const removingSeat=computed(()=>data.value?.seats.find(s=>s.id===removingDevice.value?.seatId)?.label);
+interface SeatShiftChoice {deviceId:string;seatId:string;ip:string;from:string;to:string;followingCount:number;expectedState:string;canShift:boolean;error:string|null;examples:{ip:string;from:string;to:string}[]}
+const seatShift=ref<SeatShiftChoice|null>(null),shiftCancel=ref<HTMLButtonElement|null>(null);
 let removeTrigger:HTMLButtonElement|null=null;
 const seatMap=computed(()=>new Map(data.value?.seats.map(s=>[`${s.row}:${s.column}`,s])));
 const seatAt=(row:number,col:number)=>seatMap.value.get(`${row}:${col}`);
@@ -60,7 +62,27 @@ function connect(){
  socket.onmessage=e=>{try{data.value=JSON.parse(e.data);connected.value=true;}catch{}};
  socket.onclose=()=>{connected.value=false;retry=setTimeout(connect,3000);};socket.onerror=()=>connected.value=false;
 }
-async function bind(device:Device,event:Event){const seatId=(event.target as HTMLSelectElement).value;await perform(async()=>{await api(`/devices/${device.id}/seat`,'PUT',{seatId});await refresh();});}
+async function bind(device:Device,event:Event){
+ const input=event.target as HTMLSelectElement,seatId=input.value;if(seatId===device.seatId)return;
+ input.value=device.seatId??'';
+ await perform(async()=>{
+  let expectedState: string|undefined;
+  if(data.value?.sequentialMatching){
+   const preview=await api(`/devices/${device.id}/seat-shift-preview`,'POST',{seatId});expectedState=preview.expectedState;
+   if(preview.offerShift){seatShift.value={...preview,deviceId:device.id,seatId,ip:device.name};return;}
+  }
+  await api(`/devices/${device.id}/seat`,'PUT',{seatId,expectedState});await refresh();
+ });
+ if(seatShift.value){await nextTick();shiftCancel.value?.focus();}
+}
+function cancelSeatShift(){if(!busy.value)seatShift.value=null;}
+async function applySeatShift(following:boolean){
+ const choice=seatShift.value;if(!choice||following&&!choice.canShift)return;
+ await perform(async()=>{
+  await api(`/devices/${choice.deviceId}/${following?'shift-seats':'seat'}`,following?'POST':'PUT',{seatId:choice.seatId,expectedState:choice.expectedState});
+  seatShift.value=null;await refresh();toast(following?`已修改本机，并顺延后续 ${choice.followingCount} 台学生机。`:'已修改本机座位。');
+ });
+}
 async function matchSeats(){await perform(async()=>{
  const result=await api('/devices/match-seats','POST');await refresh();deviceSort.value='ip';sortDescending.value=false;
  toast(result.changed?`已按 IP 顺序匹配 ${result.matched} 台学生机。`:'当前座位已按 IP 顺序匹配。');
@@ -111,6 +133,7 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
  </template>
  <SeatLayout v-if="editingLayout&&data" :seats="data.seats" :rows="data.layoutRows" :columns="data.layoutColumns" :busy="busy" @close="editingLayout=false" @save="saveLayout"/>
  <StudentSetup v-if="studentSetup" :mode="studentSetup" :api="api" @close="studentSetup=null" @notice="toast"/>
+ <div v-if="seatShift" class="layout-overlay" @keydown.esc.prevent="cancelSeatShift"><section class="layout-editor password-dialog" role="dialog" aria-modal="true" aria-labelledby="seat-shift-title"><header class="layout-tools"><strong id="seat-shift-title">后续座位一起顺延？</strong></header><div class="password-fields"><strong>{{seatShift.ip}} · {{seatShift.from}} → {{seatShift.to}}</strong><p>已使用顺序匹配。可将后续 {{seatShift.followingCount}} 台学生机一起往后移，此前座位保持原样。</p><p v-if="seatShift.examples.length">{{seatShift.examples.map(e=>`${e.from} → ${e.to}`).join('，')}}</p><p v-if="seatShift.error" class="password-error">{{seatShift.error}}</p></div><footer class="layout-footer"><button ref="shiftCancel" class="button" @click="cancelSeatShift" :disabled="busy">取消</button><button class="button" @click="applySeatShift(false)" :disabled="busy||!connected">仅修改本机</button><button class="button primary" @click="applySeatShift(true)" :disabled="busy||!connected||!seatShift.canShift">后续一起顺延</button></footer></section></div>
  <div v-if="removingDevice" class="layout-overlay" @keydown.esc.prevent="cancelRemove"><section class="layout-editor password-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-device-title" aria-describedby="remove-device-detail"><header class="layout-tools"><strong id="remove-device-title">确认移除学生机？</strong></header><div id="remove-device-detail" class="password-fields"><strong>{{removingDevice.name}} · {{removingSeat?removingSeat+' 号座位':'未分配座位'}}</strong><p>仅从列表移除，学生机继续连接时会自动出现。</p></div><footer class="layout-footer"><button ref="removeCancel" class="button" @click="cancelRemove" :disabled="busy">取消</button><button class="button danger" @click="confirmRemove" :disabled="busy">{{busy?'正在移除……':'确认移除'}}</button></footer></section></div>
  <div v-if="notice" class="toast" role="status">{{notice}}<button aria-label="关闭提示" @click="notice=''">关闭</button></div>
 </template>
