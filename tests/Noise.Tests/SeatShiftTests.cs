@@ -57,14 +57,33 @@ public sealed class SeatShiftTests : IDisposable
         Assert.Equal(new[]{"B1","B2","B3","B7","B9","B10"},Bindings(store));
     }
 
-    [Fact]
-    public void InsufficientCapacityDisablesShiftAndNeverPartiallyWrites()
+    [Theory]
+    [InlineData(5,1,1)]
+    [InlineData(6,0,2)]
+    public void InsufficientCapacityShiftsWhatFitsAndRetainsOverflowBindings(int target,int shifted,int unchanged)
     {
         using var store=Open();var ids=Prepare(store,6,6);var before=Bindings(store);
-        var preview=store.PreviewSeatShift(ids[3],SeatId(store,"B5"));
-        Assert.True(preview.OfferShift);Assert.False(preview.CanShift);Assert.Contains("不足",preview.Error);
-        Assert.Throws<ArgumentException>(()=>store.ShiftFollowingSeats(ids[3],new(SeatId(store,"B5"),preview.ExpectedState)));
+        var preview=store.PreviewSeatShift(ids[3],SeatId(store,$"B{target}"));
+        Assert.True(preview.OfferShift);Assert.True(preview.CanShift);Assert.Null(preview.Error);
+        Assert.Equal(shifted,preview.ShiftableFollowingCount);Assert.Equal(unchanged,preview.UnchangedFollowingCount);
         Assert.Equal(before,Bindings(store));
+        var result=store.ShiftFollowingSeats(ids[3],new(SeatId(store,$"B{target}"),preview.ExpectedState));
+        var expected=target==5?new[]{"B1","B2","B3","B5","B6","B6"}:new[]{"B1","B2","B3","B6","B5","B6"};
+        Assert.Equal(expected,Bindings(store));Assert.Equal(shifted+1,result.Changed);
+        Assert.Equal("duplicate",store.Snapshot().Seats.Single(s=>s.Label=="B6").Status);
+        Assert.Equal(6,store.Snapshot().Devices.Length);
+    }
+
+    [Fact]
+    public void PartialShiftSkipsFullSeatsAndStillMovesLaterValidBindings()
+    {
+        using var store=Open();var ids=Prepare(store,6,6);
+        store.Assign(ids[4],SeatId(store,"B6"));store.Assign(ids[5],SeatId(store,"B5"));
+        var preview=store.PreviewSeatShift(ids[3],SeatId(store,"B5"));
+        Assert.True(preview.CanShift);Assert.Equal(1,preview.ShiftableFollowingCount);Assert.Equal(1,preview.UnchangedFollowingCount);
+        Assert.Equal("192.168.1.6",Assert.Single(preview.Examples).Ip);
+        store.ShiftFollowingSeats(ids[3],new(SeatId(store,"B5"),preview.ExpectedState));
+        Assert.Equal(new[]{"B1","B2","B3","B5","B6","B6"},Bindings(store));
     }
 
     [Fact]

@@ -7,7 +7,8 @@ namespace Noise.Server;
 
 public sealed record SeatShiftExample(string Ip, string From, string To);
 public sealed record SeatShiftPreview(string From, string To, int FollowingCount, string ExpectedState,
-    bool OfferShift, bool CanShift, string? Error, SeatShiftExample[] Examples);
+    bool OfferShift, bool CanShift, string? Error, SeatShiftExample[] Examples,
+    int ShiftableFollowingCount = 0, int UnchangedFollowingCount = 0);
 
 public sealed partial class RoomStore
 {
@@ -49,7 +50,7 @@ public sealed partial class RoomStore
         {
             var old = Array.FindIndex(seats, s => s.Id == students[i].SeatId);
             if (old < 0) throw new ArgumentException("部分后续学生机尚未分配座位，请先调整或仅修改本机。");
-            if (old + offset >= seats.Length) throw new ArgumentException("后续座位不足，无法全部顺延；请增加座位或仅修改本机。");
+            if (old + offset >= seats.Length) continue;
             plan.Add((students[i], seats[old + offset]));
         }
         var targets = plan.Select(p => p.Seat.Id).ToHashSet();
@@ -71,7 +72,8 @@ public sealed partial class RoomStore
             {
                 var plan = ShiftPlan(id, seatId);
                 return new(fromLabel, seats[to].Label, following, state, true, true, null,
-                    plan.Skip(1).Take(3).Select(p => new SeatShiftExample(p.Device.IpAddress!, seats.Single(s => s.Id == p.Device.SeatId).Label, p.Seat.Label)).ToArray());
+                    plan.Skip(1).Take(3).Select(p => new SeatShiftExample(p.Device.IpAddress!, seats.Single(s => s.Id == p.Device.SeatId).Label, p.Seat.Label)).ToArray(),
+                    plan.Count - 1, following - (plan.Count - 1));
             }
             catch (ArgumentException e) { return new(fromLabel, seats[to].Label, following, state, true, false, e.Message, []); }
         }
