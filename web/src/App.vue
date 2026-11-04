@@ -5,6 +5,7 @@ import type { Dashboard, Device } from './types';
 
 import SeatLayout from './SeatLayout.vue';
 import StudentSetup from './StudentSetup.vue';
+import {useGridFit} from './useGridFit';
 const data=ref<Dashboard|null>(null),page=ref('live'),busy=ref(false),connected=ref(false),notice=ref('');
 const loading=ref(true),loginError=ref('');
 const local=['127.0.0.1','localhost','[::1]'].includes(location.hostname);
@@ -31,6 +32,8 @@ const visibleDevices=computed(()=>[...(data.value?.devices??[])].filter(d=>
  }));
 const rows=computed(()=>Array.from({length:data.value?.layoutRows??6},(_,i)=>i+1));
 const columns=computed(()=>data.value?.layoutColumns??6);
+const seatGrid=ref<HTMLElement|null>(null),gridRowCount=computed(()=>rows.value.length);
+const gridFit=useGridFit(seatGrid,gridRowCount,columns);
 const editingLayout=ref(false);
 const studentSetup=ref<'package'|'password'|null>(null);
 const removingDevice=ref<Device|null>(null),removeCancel=ref<HTMLButtonElement|null>(null);
@@ -82,11 +85,11 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
    <nav aria-label="主导航"><button :class="{active:page==='live'}" :aria-current="page==='live'?'page':undefined" @click="page='live'">音量监控</button><button :class="{active:page==='devices'}" :aria-current="page==='devices'?'page':undefined" @click="page='devices'">学生机管理</button></nav>
    <span class="connection" :class="{disconnected:!connected}"><i aria-hidden="true"></i>{{connected?`在线 ${online} / ${data.devices.length}`:'正在重连'}}</span>
   </header>
-  <main>
+  <main :class="{'monitor-page':page==='live'}">
    <div v-if="!connected" class="connection-warning" role="status">连接已中断，正在自动重连。当前显示的是上次收到的数据。</div>
    <template v-if="page==='live'">
     <section class="toolbar"><div class="page-heading"><h1>实时音量</h1><span>音量指数</span><span v-if="offline" class="offline-count">{{offline}} 台离线</span></div><button class="button" @click="editingLayout=true">座位布局</button></section>
-    <section class="panel seat-panel" :class="{'outdated':!connected}"><div class="classroom"><div class="seat-rows"><div v-for="row in rows" :key="row" class="seat-row" :style="{'--columns':columns}">
+    <section class="panel seat-panel" :class="{'outdated':!connected}"><div class="classroom"><div ref="seatGrid" class="seat-rows" :style="{...gridFit,'--rows':rows.length}"><div v-for="row in rows" :key="row" class="seat-row" :style="{'--columns':columns}">
      <template v-for="col in columns" :key="col"><div v-if="seatAt(row,col)" class="seat" :class="[tone(seatAt(row,col)!.score),{'seat-error':['error','blocked','stale','duplicate'].includes(seatAt(row,col)!.status)}]" :aria-label="`座位 ${seatAt(row,col)!.label}，${statuses[seatAt(row,col)!.status]}${seatAt(row,col)!.status==='duplicate'?'': '，音量 '+score(seatAt(row,col)!.score)}`" :title="seatAt(row,col)!.deviceName??statuses[seatAt(row,col)!.status]">
       <span class="seat-label">{{seatAt(row,col)!.label}}<small>号</small></span><strong v-if="seatAt(row,col)!.status==='duplicate'" class="seat-duplicate-label">座位重复</strong><template v-else><strong :class="{'volume-large':(seatAt(row,col)!.score??0)>=1000}">{{score(seatAt(row,col)!.score)}}</strong><small v-if="seatAt(row,col)!.score===null" class="seat-state">{{statuses[seatAt(row,col)!.status]}}</small><div v-else class="seat-meter" aria-hidden="true"><i :style="{width:`${Math.min(100,seatAt(row,col)!.score!/volumeGain)}%`}"></i></div></template>
      </div><div v-else class="aisle-cell" aria-hidden="true"></div></template>

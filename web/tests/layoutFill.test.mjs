@@ -36,7 +36,7 @@ test('drag stays on dominant axis and inside the existing grid',()=>{
 });
 test('actual component pointer handlers select two cells, preview and commit fill; keyboard and clipboard work',async()=>{
  const source=fs.readFileSync(new URL('../src/SeatLayout.vue',import.meta.url),'utf8').split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*;\r?\n/gm,'');
- const context={ref,computed,nextTick,cellRange,fillRange,fillCells,defineProps:()=>({rows:2,columns:6,busy:false,seats:[{row:1,column:1,label:'a1'},{row:1,column:2,label:'a2'}]}),defineEmits:()=>()=>{},
+ const context={ref,computed,nextTick,cellRange,fillRange,fillCells,useGridFit:()=>ref({}),defineProps:()=>({rows:2,columns:6,busy:false,seats:[{row:1,column:1,label:'a1'},{row:1,column:2,label:'a2'}]}),defineEmits:()=>()=>{},
   document:{querySelector:()=>null,elementFromPoint:(x,y)=>({closest:()=>({dataset:{layoutPosition:`${Math.floor(y/60)}:${Math.floor(x/100)}`}})})},assert};
  const verify=`
 let captured=false;
