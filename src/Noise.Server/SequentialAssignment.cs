@@ -3,10 +3,27 @@ using System.Net;
 namespace Noise.Server;
 
 public sealed record SequentialMatchResult(int Matched, int Changed);
+public sealed record ClearSeatsResult(int Cleared);
 
 public sealed partial class RoomStore
 {
     public bool SequentialMatching { get; private set; }
+    public ClearSeatsResult ClearSeatAssignments()
+    {
+        lock (gate)
+        {
+            var assigned = devices.Values.Where(d => !d.Demo && d.SeatId is not null).ToArray();
+            using var transaction = db.BeginTransaction();
+            foreach (var device in assigned)
+                Exec("UPDATE devices SET seat_id=NULL WHERE id=$id", ("$id", device.Id));
+            Exec("INSERT INTO room_matching VALUES(1,0) ON CONFLICT(id) DO UPDATE SET enabled=0");
+            transaction.Commit();
+            foreach (var device in assigned) device.SeatId = null;
+            SequentialMatching = false;
+            return new(assigned.Length);
+        }
+    }
+
     public SequentialMatchResult MatchSeatsInOrder()
     {
         lock (gate)

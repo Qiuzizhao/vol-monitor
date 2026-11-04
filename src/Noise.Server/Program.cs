@@ -148,6 +148,7 @@ teacher.MapPut("/devices/{id}/seat", (string id, SeatAssignment request, RoomSto
 teacher.MapPost("/devices/{id}/seat-shift-preview", (string id, SeatAssignment request, RoomStore store) => store.PreviewSeatShift(id, request.SeatId));
 teacher.MapPost("/devices/{id}/shift-seats", (string id, SeatAssignment request, RoomStore store) => store.ShiftFollowingSeats(id, request));
 teacher.MapPost("/devices/match-preview", (RoomStore store) => store.PreviewSequentialMatch());
+teacher.MapPost("/devices/clear-seats", (RoomStore store) => store.ClearSeatAssignments());
 teacher.MapPost("/devices/match-seats", (MatchConfirmation? request, RoomStore store) => request is null
     ? Results.BadRequest(new { error = "请先检查 IP 连号情况后确认。" }) : Results.Ok(store.ConfirmSequentialMatch(request)));
 teacher.MapDelete("/devices/{id}", (string id, RoomStore store) => { store.DeleteDevice(id); return Results.Ok(); });
