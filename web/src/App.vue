@@ -85,11 +85,11 @@ onUnmounted(()=>{clearTimeout(retry);clearTimeout(toastTimer);if(socket){socket.
    <div v-if="!connected" class="connection-warning" role="status">连接已中断，正在自动重连。当前显示的是上次收到的数据。</div>
    <template v-if="page==='live'">
     <section class="toolbar"><div class="page-heading"><h1>实时音量</h1><span>音量指数</span><span v-if="offline" class="offline-count">{{offline}} 台离线</span></div><button class="button" @click="editingLayout=true">座位布局</button></section>
-    <section class="panel seat-panel" :class="{'outdated':!connected}"><div class="classroom"><div class="teacher-desk"><span>讲台</span></div><div class="seat-rows"><div v-for="row in rows" :key="row" class="seat-row" :style="{'--columns':columns}">
+    <section class="panel seat-panel" :class="{'outdated':!connected}"><div class="classroom"><div class="seat-rows"><div v-for="row in rows" :key="row" class="seat-row" :style="{'--columns':columns}">
      <template v-for="col in columns" :key="col"><div v-if="seatAt(row,col)" class="seat" :class="[tone(seatAt(row,col)!.score),{'seat-error':['error','blocked','stale','duplicate'].includes(seatAt(row,col)!.status)}]" :aria-label="`座位 ${seatAt(row,col)!.label}，${statuses[seatAt(row,col)!.status]}${seatAt(row,col)!.status==='duplicate'?'': '，音量 '+score(seatAt(row,col)!.score)}`" :title="seatAt(row,col)!.deviceName??statuses[seatAt(row,col)!.status]">
       <span class="seat-label">{{seatAt(row,col)!.label}}<small>号</small></span><strong v-if="seatAt(row,col)!.status==='duplicate'" class="seat-duplicate-label">座位重复</strong><template v-else><strong>{{score(seatAt(row,col)!.score)}}</strong><small v-if="seatAt(row,col)!.score===null" class="seat-state">{{statuses[seatAt(row,col)!.status]}}</small><div v-else class="seat-meter" aria-hidden="true"><i :style="{width:`${Math.min(100,seatAt(row,col)!.score!)}%`}"></i></div></template>
      </div><div v-else class="aisle-cell" aria-hidden="true"></div></template>
-    </div></div></div></section>
+    </div></div><div class="teacher-desk"><span>讲台</span></div></div></section>
    </template>
    <template v-else>
     <section class="toolbar"><div class="page-heading"><h1>学生机管理</h1><span>{{data.devices.length}} 台已接入</span></div><div v-if="local" class="actions"><button class="button primary" @click="studentSetup='package'">生成学生端</button><button class="button" @click="studentSetup='password'">维护密码</button></div></section>
