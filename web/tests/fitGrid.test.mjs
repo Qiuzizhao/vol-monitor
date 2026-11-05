@@ -15,9 +15,9 @@ for(const [width,height,rows,columns] of [[1200,480,7,7],[1800,800,10,12],[700,3
   assert.ok(Object.values(fit).every(n=>Number.isFinite(n)&&n>=0));
  });
 }
-test('editor includes the header row and column, leaving no scroll area',()=>{
- const fit=fitGrid(1200,500,31,31,0);
- assert.equal(fit.gap,0);assert.ok(fit.cellHeight*31<=500+1e-8);
+test('editor fits all editable rows and columns without extra headers',()=>{
+ const fit=fitGrid(1200,500,30,30,0);
+ assert.equal(fit.gap,0);assert.ok(fit.cellHeight*30<=500+1e-8);
  assert.ok(fit.editorFont*1.2+2<=fit.cellHeight);
 });
 test('large displays preserve readable maximum fonts and smaller screens shrink cells',()=>{
