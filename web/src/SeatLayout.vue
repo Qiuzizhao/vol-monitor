@@ -10,11 +10,32 @@ const cells=ref(Array.from({length:props.rows},(_,r)=>Array.from({length:props.c
 const key=(label:string)=>{const text=label.trim();const n=Number(text);return /^\d+$/.test(text)&&Number.isSafeInteger(n)&&n<=2147483647?'N:'+n:'S:'+text.toUpperCase();};
 const unbound=computed(()=>{const labels=new Set(cells.value.flat().filter(s=>s.trim()).map(key));return props.seats.filter(s=>s.deviceId&&!labels.has(key(s.label))).length;});
 const error=ref('');
+const presetName=ref('');
+const layoutPresets=[{name:'计算机7',cells:[
+ ['A11','B11','','C11','D11','',''],
+ ['A10','B10','','C10','D10','',''],
+ ['A9','B9','','C9','D9','','E6'],
+ ['A8','B8','','C8','D8','','E5'],
+ ['A7','B7','','C7','D7','','E4'],
+ ['','','','','','','E3'],
+ ['A6','B6','','C6','D6','',''],
+ ['A5','B5','','C5','D5','','E2'],
+ ['A4','B4','','C4','D4','','E1'],
+ ['A3','B3','','C3','D3','',''],
+ ['A2','B2','','C2','D2','',''],
+ ['A1','B1','','C1','D1','','']
+]}];
 const sheet=ref<HTMLDivElement|null>(null),anchor=ref<CellPoint>({row:0,col:0}),end=ref<CellPoint>({row:0,col:0});
 const sheetFit=useGridFit(sheet,rows,columns,0);
 const selection=computed(()=>cellRange(anchor.value,end.value));
 const dragging=ref<'select'|'fill'|null>(null),fillSource=ref<CellRange|null>(null),fillTarget=ref<CellPoint|null>(null);
 const preview=computed(()=>fillSource.value&&fillTarget.value?fillRange(fillSource.value,fillTarget.value):null);
+function loadPreset(){
+ if(props.busy)return;
+ const preset=layoutPresets.find(p=>p.name===presetName.value);if(!preset)return;
+ cells.value=preset.cells.map(row=>[...row]);rows.value=cells.value.length;columns.value=cells.value[0].length;
+ anchor.value={row:0,col:0};end.value={row:0,col:0};dragging.value=null;fillSource.value=null;fillTarget.value=null;error.value='';
+}
 function inside(range:CellRange,r:number,c:number){return r>=range.top&&r<=range.bottom&&c>=range.left&&c<=range.right;}
 function cellClasses(r:number,c:number){const bounds=preview.value??selection.value;const active=inside(bounds,r,c);return {
  selected:inside(selection.value,r,c),'fill-preview':!!preview.value&&active&&!inside(selection.value,r,c),
@@ -69,5 +90,5 @@ function paste(event:ClipboardEvent,row:number,col:number){
 function save(){const labels=cells.value.flat().map(v=>v.trim()).filter(Boolean);if(!labels.length){error.value='请填写座位号。';return;}if(new Set(labels.map(key)).size!==labels.length){error.value='座位号不能重复。';return;}if(labels.some(s=>s.length>16)){error.value='座位号最多 16 个字符。';return;}error.value='';emit('save',cells.value.map(row=>row.map(v=>v.trim())));}
 </script>
 <template>
- <div class="layout-overlay"><section class="layout-editor seat-layout-dialog" role="dialog" aria-modal="true" aria-label="座位布局"><header class="layout-tools"><strong>座位布局</strong><label>行<input v-model.number="rows" type="number" min="1" max="30" @change="resize" aria-label="布局行数"/></label><label>列<input v-model.number="columns" type="number" min="1" max="30" @change="resize" aria-label="布局列数"/></label><button class="text-button" @click="clear" :disabled="busy">清空</button><span>拖动右下角填充 · 空白为走廊</span></header><div ref="sheet" class="layout-sheet" :style="sheetFit" @pointermove="pointerMove" @pointerup="finishPointer($event)" @pointercancel="finishPointer($event,true)"><table role="grid" aria-multiselectable="true"><tbody><tr v-for="(line,r) in cells" :key="r"><td v-for="(_,c) in line" :key="c" :data-layout-position="`${r}:${c}`" :class="cellClasses(r,c)" :aria-selected="inside(selection,r,c)"><input v-model="cells[r][c]" :data-layout-cell="`${r}:${c}`" :aria-label="`第 ${r+1} 行第 ${c+1} 列座位号`" maxlength="16" @pointerdown="select($event,r,c)" @input="typed(r,c)" @copy="copy" @keydown="move($event,r,c)" @paste.prevent="paste($event,r,c)" @focus="inputFocus($event,r,c)"/><button v-if="r===selection.bottom&&c===selection.right&&!dragging" type="button" class="layout-fill-handle" aria-label="拖动填充座位号" title="拖动填充座位号" tabindex="-1" @pointerdown.stop.prevent="startFill"/></td></tr></tbody></table></div><footer class="layout-footer"><span>{{error||(unbound?`需重新绑定 ${unbound} 台学生机`:'')}}</span><button class="button" @click="emit('close')" :disabled="busy">取消</button><button class="button primary" @click="save" :disabled="busy">保存</button></footer></section></div>
+ <div class="layout-overlay"><section class="layout-editor seat-layout-dialog" role="dialog" aria-modal="true" aria-label="座位布局"><header class="layout-tools"><strong>座位布局</strong><label>预设<select v-model="presetName" @change="loadPreset" :disabled="busy" aria-label="预设座位布局"><option value="">选择预设</option><option v-for="preset in layoutPresets" :key="preset.name" :value="preset.name">{{preset.name}}</option></select></label><label>行<input v-model.number="rows" type="number" min="1" max="30" @change="resize" aria-label="布局行数"/></label><label>列<input v-model.number="columns" type="number" min="1" max="30" @change="resize" aria-label="布局列数"/></label><button class="text-button" @click="clear" :disabled="busy">清空</button><span>拖动右下角填充 · 空白为走廊</span></header><div ref="sheet" class="layout-sheet" :style="sheetFit" @pointermove="pointerMove" @pointerup="finishPointer($event)" @pointercancel="finishPointer($event,true)"><table role="grid" aria-multiselectable="true"><tbody><tr v-for="(line,r) in cells" :key="r"><td v-for="(_,c) in line" :key="c" :data-layout-position="`${r}:${c}`" :class="cellClasses(r,c)" :aria-selected="inside(selection,r,c)"><input v-model="cells[r][c]" :data-layout-cell="`${r}:${c}`" :aria-label="`第 ${r+1} 行第 ${c+1} 列座位号`" maxlength="16" @pointerdown="select($event,r,c)" @input="typed(r,c)" @copy="copy" @keydown="move($event,r,c)" @paste.prevent="paste($event,r,c)" @focus="inputFocus($event,r,c)"/><button v-if="r===selection.bottom&&c===selection.right&&!dragging" type="button" class="layout-fill-handle" aria-label="拖动填充座位号" title="拖动填充座位号" tabindex="-1" @pointerdown.stop.prevent="startFill"/></td></tr></tbody></table></div><footer class="layout-footer"><span>{{error||(unbound?`需重新绑定 ${unbound} 台学生机`:'')}}</span><button class="button" @click="emit('close')" :disabled="busy">取消</button><button class="button primary" @click="save" :disabled="busy">保存</button></footer></section></div>
 </template>

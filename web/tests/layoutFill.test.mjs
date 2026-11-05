@@ -9,6 +9,24 @@ const js=ts.transpileModule(helperSource,{compilerOptions:{module:ts.ModuleKind.
 const {fillCells,fillRange,cellRange}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
 const horizontal={top:0,left:0,bottom:0,right:1};
 
+test('computer room 7 preset matches the reference and only saves after confirmation',()=>{
+ const source=fs.readFileSync(new URL('../src/SeatLayout.vue',import.meta.url),'utf8').split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*;\r?\n/gm,'');
+ const emitted=[];
+ const context={ref,computed,nextTick,cellRange,fillRange,fillCells,useGridFit:()=>ref({}),defineProps:()=>({rows:1,columns:1,busy:false,seats:[]}),defineEmits:()=> (...args)=>emitted.push(args)};
+ vm.runInNewContext(ts.transpileModule(source+'\nglobalThis.editor={presetName,loadPreset,cells,rows,columns,save};',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText,context);
+ const editor=context.editor;editor.presetName.value='计算机7';editor.loadPreset();
+ assert.equal(editor.rows.value,12);assert.equal(editor.columns.value,7);assert.equal(emitted.length,0);
+ const cells=editor.cells.value;
+ assert.deepEqual(Array.from(cells[0]),['A11','B11','','C11','D11','','']);
+ assert.deepEqual(Array.from(cells[11]),['A1','B1','','C1','D1','','']);
+ assert.ok(cells.every(row=>row[2]===''&&row[5]===''));
+ assert.deepEqual(Array.from(cells[5]),['','','','','','','E3']);
+ assert.deepEqual(Array.from(cells,row=>row[6]),['','','E6','E5','E4','E3','','E2','E1','','','']);
+ const labels=cells.flat().filter(Boolean);assert.equal(labels.length,50);assert.equal(new Set(labels).size,50);
+ editor.cells.value[0][0]='修改';editor.loadPreset();assert.equal(editor.cells.value[0][0],'A11');
+ editor.save();assert.equal(emitted.length,1);assert.equal(emitted[0][0],'save');assert.equal(emitted[0][1].length,12);
+});
+
 test('A1 A2 fills right without changing source or unrelated rows',()=>{
  const cells=[['a1','a2','','','',''],['B1','','','','','']];
  assert.deepEqual(fillCells(cells,horizontal,{row:0,col:5}),[['a1','a2','a3','a4','a5','a6'],['B1','','','','','']]);
